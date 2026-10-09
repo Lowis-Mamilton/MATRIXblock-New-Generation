@@ -23,6 +23,15 @@ export const GLYPHS = {
   repeat: svg('<path d="M30 15 A11 11 0 1 0 31 25 M30 7 V15 H22"/>'),
   forever: svg('<path d="M20 20 C15 12 6 12 6 20 C6 28 15 28 20 20 C25 12 34 12 34 20 C34 28 25 28 20 20 Z"/>'),
   led: svg('<path d="M14 26 A9 9 0 1 1 26 26 V30 H14 Z"/><path d="M15 34 H25"/>'),
+  cw: svg('<path d="M30 14 A12 12 0 1 0 32 22 M31 6 V14 H23"/>'),
+  ccw: svg('<path d="M10 14 A12 12 0 1 1 8 22 M9 6 V14 H17"/>'),
+  near: svg('<path d="M7 9 V31"/><path d="M15 14 A8 8 0 0 1 15 26 M21 10 A14 14 0 0 1 21 30 M27 6 A20 20 0 0 1 27 34"/>'),
+  clock: svg('<circle cx="20" cy="20" r="14"/><path d="M20 12 V20 L26 24"/>'),
+  speed1: svg('<path d="M16 10 L26 20 L16 30"/>'),
+  speed2: svg('<path d="M11 10 L21 20 L11 30 M21 10 L31 20 L21 30"/>'),
+  speed3: svg('<path d="M6 10 L15 20 L6 30 M16 10 L25 20 L16 30 M26 10 L35 20 L26 30"/>'),
+  times: svg('<path d="M11 11 L29 29 M29 11 L11 29"/>'),
+  note: svg('<path d="M16 30 V9 L31 6 V26"/><circle cx="12" cy="30" r="4" fill="#fff"/><circle cx="27" cy="26" r="4" fill="#fff"/>'),
   sound: svg('<path d="M8 16 H14 L22 9 V31 L14 24 H8 Z" fill="#fff"/><path d="M27 14 A8 8 0 0 1 27 26 M31 10 A13 13 0 0 1 31 30"/>'),
 };
 

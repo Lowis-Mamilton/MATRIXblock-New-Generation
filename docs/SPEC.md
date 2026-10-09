@@ -50,6 +50,12 @@ Blockly workspace ──compile──► IR (JSON 指令樹) ──► Interpret
 
 詳見 [ADR 0001](adr/0001-tethered-ir-interpreter.md) 與 [ADR 0002](adr/0002-horizontal-icon-renderer.md)。
 
+## 實作備註（與原計畫的差異）
+- 版本：Blockly 13、React 19、Vite 8、TypeScript 7（動工時的最新穩定版）。
+- Icon 與 Word 共用同一個 `src/ir/compile.ts`，直接編譯 Blockly 存檔 JSON（不依賴 DOM，方便測試）。
+- 狀態管理用 zustand；模擬器面板直接訂閱 `SimDevice`。
+- 程式結束時（所有線程跑完、且沒有「按鈕」事件積木）會停止所有馬達，與 LEGO SPIKE 的行為一致。
+
 ## 階段二（尚未開始）
 - BleR4Device（Web Bluetooth）
 - R4 端直譯韌體與指令協定（可能銜接 `MR4-firmware-redo`）
