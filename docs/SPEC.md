@@ -73,6 +73,15 @@ Blockly workspace ──compile──► IR (JSON command tree) ──► Interp
 - Each board advertises as `MXR4-` + the last 4 hex digits of its address, shows that name on its OLED, and blinks both LEDs green when an app connects.
 - While a board is connected, ▶ runs on the board and the simulator panel switches to live readings; otherwise programs run on the simulator.
 
+## Layout and responsiveness
+
+- **Supported sizes**: full editing on tablets (portrait and landscape) and computers; phones can open, view and make small edits.
+- **Top bar**: logo, project name, undo / redo, then Connect, ▶ and ■. Everything else (My projects, New, Open, Save, Settings, Language) lives in one ☰ menu.
+- **Simulator**: a side panel on wide screens (≥ 1100 px, open by default, collapsible). On narrower screens it becomes a bottom sheet: a slim status bar is always visible (mode, LEDs, running state) and expands to show the board.
+- **Simulator content**: the board image first; sensor controls in a collapsible "Sensors" section, closed by default.
+- **Block categories**: a round coloured icon with a label for each category — along the bottom in Icon mode, as a left rail in Word mode.
+- **Visual direction**: keep the navy top bar for brand recognition; everything else airy, with few lines and shadows.
+
 ## Project tools
 
 - Six starter examples (Icon: dancing robot, stop at obstacles, traffic light; Word: square route, patrol, button counter)

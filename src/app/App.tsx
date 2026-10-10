@@ -12,7 +12,9 @@ import { FirmwareMismatch } from '../devices/ble/BleR4Device';
 import { bluetoothAvailable } from '../devices/ble/webBluetooth';
 import { isIOS } from '../platform';
 import { unlockAudio } from './audio';
-import { SimulatorPanel } from '../simulator/SimulatorPanel';
+import { SheetDock, SideDock } from '../simulator/SimDock';
+import { BoardAudio } from '../simulator/useBoard';
+import { useMediaQuery, WIDE } from './useMediaQuery';
 import { compile, CompileError } from '../ir/compile';
 import { newProject, type ProjectFile } from '../project/format';
 import { exportProject, importProject } from '../project/storage';
@@ -24,7 +26,8 @@ import type { Lang } from '../i18n/strings';
 export function App() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language as Lang;
-  const { project, projectKey, simOpen, message } = useApp();
+  const { project, projectKey, message } = useApp();
+  const wide = useMediaQuery(WIDE);
   const app = useApp.getState;
   const editor = useRef<EditorApi>(null);
   const [booting, setBooting] = useState(true);
@@ -158,7 +161,7 @@ export function App() {
         onRun={run}
         onStop={stopProgram}
       />
-      <main className={`main ${simOpen ? 'sim-open' : ''}`}>
+      <main className="main">
         {project ? (
           <BlocklyEditor
             key={projectKey}
@@ -172,20 +175,10 @@ export function App() {
         ) : (
           <ProjectHome onOpen={(id) => void openById(id)} onNew={() => setCreating(true)} onImport={importFile} />
         )}
-        <aside className="sim-panel" aria-label={t('ui.simulator')}>
-          <button
-            type="button"
-            className="sim-toggle"
-            onClick={() => app().toggleSim()}
-            aria-expanded={simOpen}
-            title={simOpen ? t('ui.hideSimulator') : t('ui.showSimulator')}
-          >
-            <span aria-hidden>{simOpen ? '›' : '‹'}</span>
-            <span className="sim-toggle-label">{t('ui.simulator')}</span>
-          </button>
-          {simOpen && <SimulatorPanel />}
-        </aside>
+        {project && wide && <SideDock />}
       </main>
+      {project && !wide && <SheetDock />}
+      <BoardAudio />
 
       {creating && (
         <NewProjectDialog onBlank={createBlank} onExample={createFromExample} onCancel={() => setCreating(false)} />

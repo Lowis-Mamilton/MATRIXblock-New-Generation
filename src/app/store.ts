@@ -11,7 +11,10 @@ interface AppState {
   /** Bumped when a different project is opened so the editor re-mounts. */
   projectKey: number;
   running: boolean;
-  simOpen: boolean;
+  /** Simulator open beside the editor (wide screens). */
+  sideOpen: boolean;
+  /** Simulator sheet expanded (narrow screens). */
+  sheetOpen: boolean;
   history: { canUndo: boolean; canRedo: boolean };
   /** BLE board connection. */
   connection: { status: 'idle' | 'connecting' | 'connected'; name?: string; firmware?: string };
@@ -26,7 +29,8 @@ interface AppState {
   setRunning(running: boolean): void;
   setHistory(history: { canUndo: boolean; canRedo: boolean }): void;
   setConnection(connection: AppState['connection']): void;
-  toggleSim(): void;
+  toggleSide(): void;
+  toggleSheet(): void;
   showMessage(kind: 'error' | 'info', text: string): void;
   clearMessage(): void;
 }
@@ -41,7 +45,8 @@ export const useApp = create<AppState>((set, get) => {
     projectId: null,
     projectKey: 0,
     running: false,
-    simOpen: true,
+    sideOpen: true,
+    sheetOpen: false,
     history: { canUndo: false, canRedo: false },
     connection: { status: 'idle' },
     message: null,
@@ -61,7 +66,8 @@ export const useApp = create<AppState>((set, get) => {
     setRunning: (running) => set({ running }),
     setHistory: (history) => set({ history }),
     setConnection: (connection) => set({ connection }),
-    toggleSim: () => set({ simOpen: !get().simOpen }),
+    toggleSide: () => set({ sideOpen: !get().sideOpen }),
+    toggleSheet: () => set({ sheetOpen: !get().sheetOpen }),
     showMessage: (kind, text) => set({ message: { kind, text } }),
     clearMessage: () => set({ message: null }),
   };

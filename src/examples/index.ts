@@ -248,7 +248,7 @@ export const EXAMPLES: Example[] = [
               ),
             ),
             60,
-            200,
+            280,
           ),
           at(
             chain(
@@ -256,7 +256,7 @@ export const EXAMPLES: Example[] = [
               word('variables_set', { VAR: { id: 'count' } }, { VALUE: num(0) }),
               word('w_led', { WHICH: 'both', COLOR: 'off' }),
             ),
-            460,
+            560,
             40,
           ),
           at(
@@ -265,8 +265,8 @@ export const EXAMPLES: Example[] = [
               word('w_led', { WHICH: 'both', COLOR: 'red' }),
               word('w_beep', { NOTE: '60' }, { SECS: num(0.5) }),
             ),
-            460,
-            200,
+            560,
+            280,
           ),
         ],
       },

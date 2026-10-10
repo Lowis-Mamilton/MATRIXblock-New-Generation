@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from './store';
 import { setLanguage } from '../i18n';
@@ -18,8 +19,97 @@ interface Props {
   onStop(): void;
 }
 
-export function TopBar({ onHome, onNew, onOpen, onSave, onSettings, onUndo, onRedo, onConnect, onRun, onStop }: Props) {
+const Icon = ({ children }: { children: ReactNode }) => (
+  <svg viewBox="0 0 24 24" aria-hidden>
+    {children}
+  </svg>
+);
+
+/** The ☰ menu: everything a student rarely needs. */
+function AppMenu({ onHome, onNew, onOpen, onSave, onSettings }: Pick<Props, 'onHome' | 'onNew' | 'onOpen' | 'onSave' | 'onSettings'>) {
   const { t, i18n } = useTranslation();
+  const project = useApp((s) => s.project);
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => !root.current?.contains(e.target as Node) && setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const item = (label: string, action: () => void, icon: ReactNode, show = true) =>
+    show && (
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => {
+          setOpen(false);
+          action();
+        }}
+      >
+        <Icon>{icon}</Icon>
+        {label}
+      </button>
+    );
+
+  return (
+    <div className="app-menu" ref={root}>
+      <button
+        type="button"
+        className="icon-button menu-button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={t('ui.menu')}
+        title={t('ui.menu')}
+        onClick={() => setOpen(!open)}
+      >
+        <Icon>
+          <path d="M4 7h16M4 12h16M4 17h16" />
+        </Icon>
+      </button>
+      {open && (
+        <div className="menu-popover" role="menu">
+          {item(t('ui.myProjects'), onHome, <path d="M3 11l9-7 9 7M5 10v10h5v-6h4v6h5V10" />, !!project)}
+          {item(t('ui.newProject'), onNew, <path d="M12 5v14M5 12h14" />)}
+          {item(t('ui.openFile'), onOpen, <path d="M3 7h6l2 2h10v10H3zM3 7V5h6" />)}
+          {item(t('ui.saveFile'), onSave, <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />, !!project)}
+          {item(
+            t('ui.settings'),
+            onSettings,
+            <>
+              <circle cx="12" cy="12" r="3" />
+              <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" />
+            </>,
+            !!project,
+          )}
+          <label className="menu-language">
+            <Icon>
+              <circle cx="12" cy="12" r="9" />
+              <path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18" />
+            </Icon>
+            <span>{t('ui.language')}</span>
+            <select value={i18n.language} onChange={(e) => setLanguage(e.target.value as Lang)}>
+              {LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>{l.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function TopBar(props: Props) {
+  const { onUndo, onRedo, onConnect, onRun, onStop } = props;
+  const { t } = useTranslation();
   const project = useApp((s) => s.project);
   const running = useApp((s) => s.running);
   const rename = useApp((s) => s.rename);
@@ -27,17 +117,10 @@ export function TopBar({ onHome, onNew, onOpen, onSave, onSettings, onUndo, onRe
   const connection = useApp((s) => s.connection);
   const canBluetooth = bluetoothAvailable();
 
-  const action = (key: string, onClick: () => void, disabled: boolean, icon: React.ReactNode) => (
-    <button type="button" onClick={onClick} disabled={disabled} title={t(`ui.${key}`)} aria-label={t(`ui.${key}`)}>
-      <svg viewBox="0 0 24 24" aria-hidden>{icon}</svg>
-      <span className="label">{t(`ui.${key}`)}</span>
-    </button>
-  );
-
   return (
     <header className="topbar">
+      <AppMenu {...props} />
       <img className="logo" src={`${import.meta.env.BASE_URL}logo-white.png`} alt="MATRIX" />
-      <span className="product">block</span>
 
       {project && (
         <input
@@ -50,37 +133,18 @@ export function TopBar({ onHome, onNew, onOpen, onSave, onSettings, onUndo, onRe
         />
       )}
 
-      <nav className="file-actions">
-        {action('myProjects', onHome, !project, <path d="M3 11l9-7 9 7M5 10v10h5v-6h4v6h5V10" />)}
-        {action('new', onNew, false, <path d="M12 5v14M5 12h14" />)}
-        {action('open', onOpen, false, <path d="M3 7h6l2 2h10v10H3zM3 7V5h6" />)}
-        {action('save', onSave, !project, <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />)}
-        {action('settings', onSettings, !project, <><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" /></>)}
-      </nav>
+      <div className="spacer" />
 
       {project && (
         <div className="history">
-          <button type="button" onClick={onUndo} disabled={!history.canUndo} aria-label={t('ui.undo')} title={t('ui.undo')}>
-            <svg viewBox="0 0 24 24" aria-hidden><path d="M9 14L4 9l5-5M4 9h10a6 6 0 010 12h-3" /></svg>
+          <button type="button" className="icon-button" onClick={onUndo} disabled={!history.canUndo} aria-label={t('ui.undo')} title={t('ui.undo')}>
+            <Icon><path d="M9 14L4 9l5-5M4 9h10a6 6 0 010 12h-3" /></Icon>
           </button>
-          <button type="button" onClick={onRedo} disabled={!history.canRedo} aria-label={t('ui.redo')} title={t('ui.redo')}>
-            <svg viewBox="0 0 24 24" aria-hidden><path d="M15 14l5-5-5-5M20 9H10a6 6 0 000 12h3" /></svg>
+          <button type="button" className="icon-button" onClick={onRedo} disabled={!history.canRedo} aria-label={t('ui.redo')} title={t('ui.redo')}>
+            <Icon><path d="M15 14l5-5-5-5M20 9H10a6 6 0 000 12h3" /></Icon>
           </button>
         </div>
       )}
-
-      <div className="spacer" />
-
-      <select
-        className="lang"
-        aria-label={t('ui.language')}
-        value={i18n.language}
-        onChange={(e) => setLanguage(e.target.value as Lang)}
-      >
-        {LANGUAGES.map((l) => (
-          <option key={l.code} value={l.code}>{l.label}</option>
-        ))}
-      </select>
 
       <button
         type="button"
@@ -95,7 +159,7 @@ export function TopBar({ onHome, onNew, onOpen, onSave, onSettings, onUndo, onRe
               : t('ui.connectHint')
         }
       >
-        <svg viewBox="0 0 24 24" aria-hidden><path d="M7 7l10 10-5 5V2l5 5L7 17" /></svg>
+        <Icon><path d="M7 7l10 10-5 5V2l5 5L7 17" /></Icon>
         <span className="label">
           {connection.status === 'connected'
             ? connection.name
@@ -105,28 +169,29 @@ export function TopBar({ onHome, onNew, onOpen, onSave, onSettings, onUndo, onRe
         </span>
       </button>
 
-      <div className="run-controls">
-        <button
-          type="button"
-          className={`run ${running ? 'is-running' : ''}`}
-          onClick={onRun}
-          disabled={!project}
-          aria-label={t('ui.run')}
-          title={t('ui.run')}
-        >
-          <svg viewBox="0 0 24 24" aria-hidden><path d="M8 5v14l11-7z" /></svg>
-        </button>
-        <button
-          type="button"
-          className="stop"
-          onClick={onStop}
-          disabled={!running}
-          aria-label={t('ui.stop')}
-          title={t('ui.stop')}
-        >
-          <svg viewBox="0 0 24 24" aria-hidden><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
-        </button>
-      </div>
+      {project && (
+        <div className="run-controls">
+          <button
+            type="button"
+            className={`run ${running ? 'is-running' : ''}`}
+            onClick={onRun}
+            aria-label={t('ui.run')}
+            title={t('ui.run')}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden><path d="M8 5v14l11-7z" /></svg>
+          </button>
+          <button
+            type="button"
+            className="stop"
+            onClick={onStop}
+            disabled={!running}
+            aria-label={t('ui.stop')}
+            title={t('ui.stop')}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+          </button>
+        </div>
+      )}
     </header>
   );
 }

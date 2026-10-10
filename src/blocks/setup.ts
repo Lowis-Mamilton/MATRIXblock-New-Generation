@@ -10,6 +10,7 @@ import { ICON_TOOLBOX } from './icon/blocks';
 import { WORD_TOOLBOX } from './word/blocks';
 import type { Lang } from '../i18n/strings';
 import { STRINGS } from '../i18n/strings';
+import { injectCategoryStyles } from './shared/categoryIcons';
 
 export type BlockMode = 'icon' | 'word';
 
@@ -58,7 +59,14 @@ export const THEME = Blockly.Theme.defineTheme('matrixblock', {
   startHats: true,
 });
 
+/** Round coloured icon + label for a toolbox category (styled in styles.css). */
+const categoryCss = (category: string) => ({
+  row: `blocklyToolboxCategory mbCat mbCat-${category}`,
+  label: 'blocklyToolboxCategoryLabel mbCatLabel',
+});
+
 export function buildToolbox(mode: BlockMode, lang: Lang): Blockly.utils.toolbox.ToolboxDefinition {
+  injectCategoryStyles();
   const names = STRINGS[lang].categories;
   if (mode === 'icon') {
     return {
@@ -67,7 +75,7 @@ export function buildToolbox(mode: BlockMode, lang: Lang): Blockly.utils.toolbox
         kind: 'category',
         name: names[category],
         categorystyle: `${category}_category`,
-        cssconfig: { row: `blocklyTreeRow mbCat mbCat-${category}` },
+        cssconfig: categoryCss(category),
         contents: blocks.map((b) => ({ kind: 'block', type: b.type, ...(b.fields ? { fields: b.fields } : {}) })),
       })),
     };
@@ -78,7 +86,7 @@ export function buildToolbox(mode: BlockMode, lang: Lang): Blockly.utils.toolbox
       kind: 'category',
       name: names[category as Category],
       categorystyle: `${category}_category`,
-      cssconfig: { row: `blocklyTreeRow mbCat mbCat-${category}` },
+      cssconfig: categoryCss(category),
       ...(contents === 'VARIABLE' ? { custom: 'VARIABLE' } : { contents }),
     })) as Blockly.utils.toolbox.ToolboxItemInfo[],
   };
