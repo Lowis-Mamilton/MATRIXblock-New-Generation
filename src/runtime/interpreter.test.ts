@@ -171,7 +171,7 @@ describe('Runtime', () => {
   });
 
   it('runs a motor by degrees for the right amount of time', async () => {
-    // 50% of 720 deg/s = 360 deg/s, so 360 degrees takes one second.
+    // 50% of 760 deg/s = 380 deg/s, so 360 degrees takes about 0.95 s.
     const done = rt.run(
       program(thread([st({ op: 'motorRun', port: 'M4', speed: num(50), limit: { amount: num(360), unit: 'deg' } })])),
     );

@@ -74,5 +74,5 @@ export interface ObservableDevice extends Device {
   snapshot(): BoardSnapshot;
 }
 
-/** Degrees per second a motor turns at 100% speed. */
-export const MAX_DEG_PER_SEC = 720;
+/** Degrees per second a motor turns at 100% speed (measured on the R4 TT motor). */
+export const MAX_DEG_PER_SEC = 760;
