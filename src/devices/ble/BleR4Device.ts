@@ -50,6 +50,7 @@ export class BleR4Device implements ObservableDevice {
   private done = new Map<number, () => void>();
   private infoWaiter: ((m: Extract<BoardMessage, { type: 'info' }>) => void) | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
+  private lastSentAt = 0;
   private listeners = new Set<() => void>();
   private buttonListeners = new Set<(b: ButtonId) => void>();
   private disconnectListeners = new Set<() => void>();
@@ -95,7 +96,10 @@ export class BleR4Device implements ObservableDevice {
     });
     this.firmware = info.firmware;
     if (info.protocol !== PROTOCOL_VERSION) throw new FirmwareMismatch(info.firmware, info.protocol);
-    this.heartbeat = setInterval(() => void this.send(encode.heartbeat(0)), HEARTBEAT_MS);
+    // Chrome throttles timers in background or occluded tabs (down to ~1/s),
+    // which would trip the board's watchdog, so telemetry arrivals also
+    // trigger heartbeats (Bluetooth events are not throttled).
+    this.heartbeat = setInterval(() => this.keepAlive(), HEARTBEAT_MS);
   }
 
   onDisconnect(cb: () => void) {
@@ -255,7 +259,12 @@ export class BleR4Device implements ObservableDevice {
     return this.seq;
   }
 
+  private keepAlive() {
+    if (this.heartbeat && Date.now() - this.lastSentAt >= HEARTBEAT_MS) void this.send(encode.heartbeat(0));
+  }
+
   private send(frame: Uint8Array) {
+    this.lastSentAt = Date.now();
     return this.link.send(frame).catch(() => {
       /* a lost frame surfaces as a disconnect */
     });
@@ -271,6 +280,7 @@ export class BleR4Device implements ObservableDevice {
   }
 
   private receive(m: BoardMessage) {
+    this.keepAlive();
     switch (m.type) {
       case 'motors': {
         const now = Date.now();

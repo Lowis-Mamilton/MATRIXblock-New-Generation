@@ -40,7 +40,8 @@ enum Msg : uint8_t {
 };
 
 const uint8_t MAX_FRAME = 20;
-const unsigned long WATCHDOG_MS = 1000;
+/** Stop the motors if the app is silent this long (browsers may delay timers ~1 s). */
+const unsigned long WATCHDOG_MS = 2500;
 const unsigned long MOTORS_EVERY_MS = 50;
 const unsigned long IMU_EVERY_MS = 100;
 const unsigned long PORTS_EVERY_MS = 200;
@@ -468,7 +469,7 @@ void loop() {
 
   if (connected && !watchdogTripped && now - lastRxMs > WATCHDOG_MS) {
     // The app went quiet (radio trouble, tab closed): stop before the robot runs away.
-    Serial.println(F("[MatrixblockLink] watchdog: no frames for 1 s, stopping"));
+    Serial.println(F("[MatrixblockLink] watchdog: app silent, stopping"));
     haltAll();
     watchdogTripped = true;
   }

@@ -101,6 +101,28 @@ describe('BleR4Device', () => {
     expect(board.of(CMD.HEARTBEAT).length).toBe(3);
   });
 
+  it('keeps the board alive from telemetry when timers are throttled', async () => {
+    // Simulate a background tab: timers never fire, but notifications still arrive.
+    vi.useRealTimers();
+    const b = new FakeBoard();
+    const d = new BleR4Device(b);
+    await d.handshake();
+    const realNow = Date.now;
+    let now = realNow();
+    Date.now = () => now;
+    try {
+      for (let i = 0; i < 10; i++) {
+        now += 100; // telemetry every 100 ms, no timer ticks
+        b.motors([0, 0, 0, 0]);
+      }
+      // 1 s of telemetry should have produced roughly one heartbeat per 300 ms.
+      expect(b.of(CMD.HEARTBEAT).length).toBeGreaterThanOrEqual(3);
+    } finally {
+      Date.now = realNow;
+      d.disconnect();
+    }
+  });
+
   it('runs motors by degrees on the board, splitting the distance by speed', async () => {
     const ctrl = new AbortController();
     let finished = false;
