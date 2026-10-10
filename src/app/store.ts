@@ -1,58 +1,74 @@
 import { create } from 'zustand';
 import type { ProjectFile } from '../project/format';
 import type { SWorkspace } from '../ir/compile';
-import type { DriveConfig } from '../ir/types';
-import { saveCurrent } from '../project/storage';
+import type { DriveConfig, SensorConfig } from '../ir/types';
+import { library } from '../project/library';
 
 interface AppState {
+  /** The open project, or null on the "My projects" home screen. */
   project: ProjectFile | null;
-  /** Bumped when a different project is loaded so the editor re-mounts. */
+  projectId: string | null;
+  /** Bumped when a different project is opened so the editor re-mounts. */
   projectKey: number;
   running: boolean;
   simOpen: boolean;
+  history: { canUndo: boolean; canRedo: boolean };
   message: { kind: 'error' | 'info'; text: string } | null;
 
-  loadProject(p: ProjectFile): void;
+  openProject(id: string, p: ProjectFile): void;
+  closeProject(): void;
   updateWorkspace(ws: SWorkspace): void;
   rename(name: string): void;
   setDrive(drive: DriveConfig): void;
+  setSensors(sensors: SensorConfig): void;
   setRunning(running: boolean): void;
+  setHistory(history: { canUndo: boolean; canRedo: boolean }): void;
   toggleSim(): void;
   showMessage(kind: 'error' | 'info', text: string): void;
   clearMessage(): void;
 }
 
-export const useApp = create<AppState>((set, get) => ({
-  project: null,
-  projectKey: 0,
-  running: false,
-  simOpen: true,
-  message: null,
+export const useApp = create<AppState>((set, get) => {
+  const patch = (fields: Partial<ProjectFile>) => {
+    const p = get().project;
+    if (p) set({ project: { ...p, ...fields } });
+  };
+  return {
+    project: null,
+    projectId: null,
+    projectKey: 0,
+    running: false,
+    simOpen: true,
+    history: { canUndo: false, canRedo: false },
+    message: null,
 
-  loadProject: (project) => set({ project, projectKey: get().projectKey + 1 }),
-  updateWorkspace: (workspace) => {
-    const p = get().project;
-    if (p) set({ project: { ...p, workspace } });
-  },
-  rename: (name) => {
-    const p = get().project;
-    if (p) set({ project: { ...p, name } });
-  },
-  setDrive: (drive) => {
-    const p = get().project;
-    if (p) set({ project: { ...p, drive } });
-  },
-  setRunning: (running) => set({ running }),
-  toggleSim: () => set({ simOpen: !get().simOpen }),
-  showMessage: (kind, text) => set({ message: { kind, text } }),
-  clearMessage: () => set({ message: null }),
-}));
+    openProject: (projectId, project) => {
+      set({ project, projectId, projectKey: get().projectKey + 1, history: { canUndo: false, canRedo: false } });
+      void library.setLastOpened(projectId);
+    },
+    closeProject: () => {
+      set({ project: null, projectId: null });
+      void library.setLastOpened(null);
+    },
+    updateWorkspace: (workspace) => patch({ workspace }),
+    rename: (name) => patch({ name }),
+    setDrive: (drive) => patch({ drive }),
+    setSensors: (sensors) => patch({ sensors }),
+    setRunning: (running) => set({ running }),
+    setHistory: (history) => set({ history }),
+    toggleSim: () => set({ simOpen: !get().simOpen }),
+    showMessage: (kind, text) => set({ message: { kind, text } }),
+    clearMessage: () => set({ message: null }),
+  };
+});
 
-// Auto-save the current project shortly after every change.
+// Auto-save the open project shortly after every change.
 let timer: ReturnType<typeof setTimeout> | undefined;
 useApp.subscribe((state, prev) => {
-  if (!state.project || state.project === prev.project) return;
+  if (!state.project || !state.projectId || state.project === prev.project) return;
+  // Opening a project is not a change worth saving (it would reorder the list).
+  if (state.projectKey !== prev.projectKey) return;
   clearTimeout(timer);
-  const p = state.project;
-  timer = setTimeout(() => void saveCurrent(p), 400);
+  const { project, projectId } = state;
+  timer = setTimeout(() => void library.save(projectId, project), 400);
 });

@@ -5,7 +5,9 @@ import {
   MOTOR_PORTS,
   SERVO_PORTS,
   type AmountUnit,
+  type ButtonId,
   type LedColor,
+  type LedTarget,
   type MotorPort,
   type SensorColor,
   type ServoPort,
@@ -13,17 +15,26 @@ import {
   type TiltAxis,
 } from '../../ir/types';
 
+/**
+ * Simulated sensor values. The simulator has one colour and one distance
+ * sensor that answer on every I2C port.
+ */
 export interface SimSensors {
   color: SensorColor;
   distance: number;
   tilt: Record<TiltAxis, number>;
-  button: boolean;
+  buttons: Record<ButtonId, boolean>;
 }
+
+export type SensorPatch = Partial<Pick<SimSensors, 'color' | 'distance'>> & {
+  tilt?: Partial<SimSensors['tilt']>;
+  buttons?: Partial<SimSensors['buttons']>;
+};
 
 export interface SimSnapshot {
   motors: Record<MotorPort, { speed: number; angle: number }>;
   servos: Record<ServoPort, number>;
-  led: LedColor;
+  leds: [LedColor, LedColor];
   /** MIDI note currently sounding, or null. */
   note: number | null;
   sensors: SimSensors;
@@ -46,16 +57,16 @@ const record = <K extends string, V>(keys: readonly K[], make: () => V) =>
 export class SimDevice implements Device {
   private motors = record(MOTOR_PORTS, (): Motor => ({ speed: 0, angle: 0, since: Date.now() }));
   private servos = record(SERVO_PORTS, () => 90);
-  private led: LedColor = 'off';
+  private leds: [LedColor, LedColor] = ['off', 'off'];
   private note: number | null = null;
   private sensors: SimSensors = {
     color: 'none',
     distance: 100,
     tilt: { pitch: 0, roll: 0, yaw: 0 },
-    button: false,
+    buttons: { up: false, down: false },
   };
   private listeners = new Set<() => void>();
-  private buttonListeners = new Set<() => void>();
+  private buttonListeners = new Set<(b: ButtonId) => void>();
 
   // ---- observation (simulator panel) ----
 
@@ -74,17 +85,22 @@ export class SimDevice implements Device {
         MOTOR_PORTS.map((p) => [p, { speed: this.motors[p].speed, angle: this.motorAngle(p) }]),
       ) as SimSnapshot['motors'],
       servos: { ...this.servos },
-      led: this.led,
+      leds: [...this.leds],
       note: this.note,
-      sensors: { ...this.sensors, tilt: { ...this.sensors.tilt } },
+      sensors: { ...this.sensors, tilt: { ...this.sensors.tilt }, buttons: { ...this.sensors.buttons } },
     };
   }
 
-  setSensors(patch: Partial<SimSensors>) {
-    const wasPressed = this.sensors.button;
-    this.sensors = { ...this.sensors, ...patch, tilt: { ...this.sensors.tilt, ...patch.tilt } };
-    if (!wasPressed && this.sensors.button) {
-      for (const cb of this.buttonListeners) cb();
+  setSensors(patch: SensorPatch) {
+    const before = this.sensors.buttons;
+    this.sensors = {
+      ...this.sensors,
+      ...patch,
+      tilt: { ...this.sensors.tilt, ...patch.tilt },
+      buttons: { ...this.sensors.buttons, ...patch.buttons },
+    };
+    for (const b of ['up', 'down'] as const) {
+      if (!before[b] && this.sensors.buttons[b]) for (const cb of this.buttonListeners) cb(b);
     }
     this.changed();
   }
@@ -94,7 +110,7 @@ export class SimDevice implements Device {
     const now = Date.now();
     for (const p of MOTOR_PORTS) this.motors[p] = { speed: 0, angle: 0, since: now };
     for (const p of SERVO_PORTS) this.servos[p] = 90;
-    this.led = 'off';
+    this.leds = ['off', 'off'];
     this.note = null;
     this.changed();
   }
@@ -148,8 +164,9 @@ export class SimDevice implements Device {
     this.changed();
   }
 
-  ledSet(color: LedColor) {
-    this.led = color;
+  ledSet(target: LedTarget, color: LedColor) {
+    if (target !== '2') this.leds[0] = color;
+    if (target !== '1') this.leds[1] = color;
     this.changed();
   }
 
@@ -176,11 +193,11 @@ export class SimDevice implements Device {
     return this.sensors.tilt[axis];
   }
 
-  readButton() {
-    return this.sensors.button;
+  readButton(button: ButtonId) {
+    return this.sensors.buttons[button];
   }
 
-  onButtonPress(cb: () => void) {
+  onButtonPress(cb: (button: ButtonId) => void) {
     this.buttonListeners.add(cb);
     return () => this.buttonListeners.delete(cb);
   }

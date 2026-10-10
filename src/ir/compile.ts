@@ -9,10 +9,14 @@ import type {
   Amount,
   AmountUnit,
   BinOp,
+  ButtonId,
   Expr,
+  I2cPort,
   LedColor,
+  LedTarget,
   MotorPort,
   Program,
+  SensorConfig,
   ServoPort,
   StopMode,
   Stmt,
@@ -45,6 +49,8 @@ export const NEAR_CM = 10;
 /** Icon-mode note length in seconds. */
 export const ICON_NOTE_SECS = 0.5;
 
+export const DEFAULT_SENSORS: SensorConfig = { color: 'I2C1', distance: 'I2C2' };
+
 class Ctx {
   private varNames = new Map<string, string>();
 
@@ -71,12 +77,15 @@ const field = <T extends string>(b: SBlock, name: string) => str(b, name) as T;
 const fnum = (b: SBlock, name: string) => Number(b.fields?.[name] ?? 0);
 const child = (b: SBlock, input: string) => b.inputs?.[input]?.block ?? b.inputs?.[input]?.shadow;
 
+const button = (b: SBlock): ButtonId => (str(b, 'BTN') === 'down' ? 'down' : 'up');
+const ledTarget = (b: SBlock): LedTarget => (field<LedTarget>(b, 'WHICH') || 'both');
+
 const TRIGGERS: Record<string, (b: SBlock) => Trigger> = {
   w_when_start: () => ({ k: 'start' }),
-  w_when_button: () => ({ k: 'button' }),
+  w_when_button: (b) => ({ k: 'button', button: button(b) }),
   w_when_message: (b) => ({ k: 'message', msg: str(b, 'MSG') }),
   i_start: () => ({ k: 'start' }),
-  i_when_button: () => ({ k: 'button' }),
+  i_when_button: (b) => ({ k: 'button', button: button(b) }),
 };
 
 type StmtCompiler = (b: SBlock, c: Compiler) => Omit<Stmt, 'id'>;
@@ -98,7 +107,7 @@ const STATEMENTS: Record<string, StmtCompiler> = {
   w_motor_reset: (b) => ({ op: 'motorResetAngle', port: field<MotorPort>(b, 'PORT') }),
   w_servo: (b, c) => ({ op: 'servo', port: field<ServoPort>(b, 'PORT'), angle: c.expr(b, 'ANGLE') }),
   // ---- Word: light & sound ----
-  w_led: (b) => ({ op: 'led', color: field<LedColor>(b, 'COLOR') }),
+  w_led: (b) => ({ op: 'led', target: ledTarget(b), color: field<LedColor>(b, 'COLOR') }),
   w_beep: (b, c) => ({ op: 'beep', note: num(fnum(b, 'NOTE')), secs: c.expr(b, 'SECS') }),
   // ---- Word: control ----
   w_wait: (b, c) => ({ op: 'wait', secs: c.expr(b, 'SECS') }),
@@ -131,20 +140,25 @@ const STATEMENTS: Record<string, StmtCompiler> = {
   }),
   i_servo: (b) => ({ op: 'servo', port: field<ServoPort>(b, 'PORT'), angle: num(fnum(b, 'ANGLE')) }),
   i_wait: (b) => ({ op: 'wait', secs: num(fnum(b, 'SECS')) }),
-  i_wait_sensor: (b) => ({ op: 'waitUntil', cond: iconCondition(str(b, 'COND')) }),
+  i_wait_sensor: (b, c) => ({ op: 'waitUntil', cond: iconCondition(str(b, 'COND'), c.sensors) }),
   i_repeat: (b, c) => ({ op: 'repeat', times: num(fnum(b, 'TIMES')), body: c.stack(b, 'DO') }),
   i_forever: (b, c) => ({ op: 'forever', body: c.stack(b, 'DO') }),
-  i_led: (b) => ({ op: 'led', color: field<LedColor>(b, 'COLOR') }),
+  i_led: (b) => ({ op: 'led', target: ledTarget(b), color: field<LedColor>(b, 'COLOR') }),
   i_sound: (b) => ({ op: 'beep', note: num(fnum(b, 'NOTE')), secs: num(ICON_NOTE_SECS) }),
 };
 
-/** Icon "wait until" choices: `button`, `near`, or a colour name. */
-export function iconCondition(cond: string): Expr {
-  if (cond === 'button') return { k: 'sensor', read: { type: 'button' } };
+/** Icon "wait until" choices: `up` / `down` button, `near`, or a colour name. */
+export function iconCondition(cond: string, sensors: SensorConfig): Expr {
+  if (cond === 'up' || cond === 'down') return { k: 'sensor', read: { type: 'button', button: cond } };
   if (cond === 'near') {
-    return { k: 'bin', op: '<', a: { k: 'sensor', read: { type: 'distance' } }, b: num(NEAR_CM) };
+    return { k: 'bin', op: '<', a: { k: 'sensor', read: { type: 'distance', port: sensors.distance } }, b: num(NEAR_CM) };
   }
-  return { k: 'bin', op: '=', a: { k: 'sensor', read: { type: 'color' } }, b: { k: 'str', v: cond } };
+  return {
+    k: 'bin',
+    op: '=',
+    a: { k: 'sensor', read: { type: 'color', port: sensors.color } },
+    b: { k: 'str', v: cond },
+  };
 }
 
 const ARITH: Record<string, BinOp> = { ADD: '+', MINUS: '-', MULTIPLY: '*', DIVIDE: '/' };
@@ -166,16 +180,16 @@ const EXPRESSIONS: Record<string, ExprCompiler> = {
   logic_negate: (b, c) => ({ k: 'not', a: c.expr(b, 'BOOL', false) }),
   math_random_int: (b, c) => ({ k: 'random', min: c.expr(b, 'FROM'), max: c.expr(b, 'TO') }),
   variables_get: (b, c) => ({ k: 'var', name: c.ctx.varName(b.fields?.VAR) }),
-  w_color: () => ({ k: 'sensor', read: { type: 'color' } }),
+  w_color: (b) => ({ k: 'sensor', read: { type: 'color', port: field<I2cPort>(b, 'PORT') } }),
   w_color_is: (b) => ({
     k: 'bin',
     op: '=',
-    a: { k: 'sensor', read: { type: 'color' } },
+    a: { k: 'sensor', read: { type: 'color', port: field<I2cPort>(b, 'PORT') } },
     b: { k: 'str', v: str(b, 'COLOR') },
   }),
-  w_distance: () => ({ k: 'sensor', read: { type: 'distance' } }),
+  w_distance: (b) => ({ k: 'sensor', read: { type: 'distance', port: field<I2cPort>(b, 'PORT') } }),
   w_tilt: (b) => ({ k: 'sensor', read: { type: 'tilt', axis: field<TiltAxis>(b, 'AXIS') } }),
-  w_button: () => ({ k: 'sensor', read: { type: 'button' } }),
+  w_button: (b) => ({ k: 'sensor', read: { type: 'button', button: button(b) } }),
   w_motor_angle: (b) => ({ k: 'sensor', read: { type: 'motorAngle', port: field<MotorPort>(b, 'PORT') } }),
 };
 
@@ -189,7 +203,10 @@ export class CompileError extends Error {
 }
 
 class Compiler {
-  constructor(readonly ctx: Ctx) {}
+  constructor(
+    readonly ctx: Ctx,
+    readonly sensors: SensorConfig,
+  ) {}
 
   /** Compile the expression plugged into `input`; empty inputs default to 0 / false. */
   expr(b: SBlock, input: string, numeric = true): Expr {
@@ -220,9 +237,9 @@ class Compiler {
   }
 }
 
-export function compile(ws: SWorkspace): Program {
+export function compile(ws: SWorkspace, sensors: SensorConfig = DEFAULT_SENSORS): Program {
   const ctx = new Ctx(ws);
-  const c = new Compiler(ctx);
+  const c = new Compiler(ctx, sensors);
   const threads: Thread[] = [];
   for (const top of ws.blocks?.blocks ?? []) {
     const trigger = TRIGGERS[top.type];

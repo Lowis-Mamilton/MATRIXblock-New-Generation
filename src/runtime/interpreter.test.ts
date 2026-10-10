@@ -47,12 +47,12 @@ describe('Runtime', () => {
 
   it('runs several start threads at the same time', async () => {
     const a = thread([st({ op: 'motorRun', port: 'M1', speed: num(30), limit: { amount: num(1), unit: 'sec' } })]);
-    const b = thread([st({ op: 'led', color: 'red' })]);
+    const b = thread([st({ op: 'led', target: 'both', color: 'red' })]);
     void rt.run(program(a, b));
     await vi.advanceTimersByTimeAsync(10);
     const snap = device.snapshot();
     expect(snap.motors.M1.speed).toBe(30);
-    expect(snap.led).toBe('red');
+    expect(snap.leds).toEqual(['red', 'red']);
   });
 
   it('stop() ends a forever loop and halts the motors', async () => {
@@ -68,24 +68,36 @@ describe('Runtime', () => {
   });
 
   it('waitUntil blocks until the condition becomes true', async () => {
-    const near: Expr = { k: 'bin', op: '<', a: { k: 'sensor', read: { type: 'distance' } }, b: num(10) };
-    void rt.run(program(thread([st({ op: 'waitUntil', cond: near }), st({ op: 'led', color: 'green' })])));
+    const near: Expr = { k: 'bin', op: '<', a: { k: 'sensor', read: { type: 'distance', port: 'I2C1' } }, b: num(10) };
+    void rt.run(program(thread([st({ op: 'waitUntil', cond: near }), st({ op: 'led', target: 'both', color: 'green' })])));
     await vi.advanceTimersByTimeAsync(300);
-    expect(device.snapshot().led).toBe('off');
+    expect(device.snapshot().leds[0]).toBe('off');
     device.setSensors({ distance: 5 });
     await vi.advanceTimersByTimeAsync(100);
-    expect(device.snapshot().led).toBe('green');
+    expect(device.snapshot().leds[0]).toBe('green');
+  });
+
+  it('only starts threads for the button that was pressed', async () => {
+    void rt.run(
+      program(
+        thread([st({ op: 'led', target: '1', color: 'red' })], { k: 'button', button: 'up' }),
+        thread([st({ op: 'led', target: '2', color: 'green' })], { k: 'button', button: 'down' }),
+      ),
+    );
+    device.setSensors({ buttons: { down: true } });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(device.snapshot().leds).toEqual(['off', 'green']);
   });
 
   it('starts button threads when the on-board button is pressed and keeps running', async () => {
-    const done = rt.run(program(thread([st({ op: 'led', color: 'blue' })], { k: 'button' })));
+    const done = rt.run(program(thread([st({ op: 'led', target: 'both', color: 'blue' })], { k: 'button', button: 'up' })));
     let finished = false;
     void done.then(() => (finished = true));
     await vi.advanceTimersByTimeAsync(100);
-    expect(device.snapshot().led).toBe('off');
-    device.setSensors({ button: true });
+    expect(device.snapshot().leds[0]).toBe('off');
+    device.setSensors({ buttons: { up: true } });
     await vi.advanceTimersByTimeAsync(100);
-    expect(device.snapshot().led).toBe('blue');
+    expect(device.snapshot().leds[0]).toBe('blue');
     expect(finished).toBe(false);
   });
 
@@ -93,12 +105,12 @@ describe('Runtime', () => {
     void rt.run(
       program(
         thread([st({ op: 'broadcast', msg: 'go' })]),
-        thread([st({ op: 'led', color: 'purple' })], { k: 'message', msg: 'go' }),
-        thread([st({ op: 'led', color: 'red' })], { k: 'message', msg: 'other' }),
+        thread([st({ op: 'led', target: 'both', color: 'purple' })], { k: 'message', msg: 'go' }),
+        thread([st({ op: 'led', target: 'both', color: 'red' })], { k: 'message', msg: 'other' }),
       ),
     );
     await vi.advanceTimersByTimeAsync(50);
-    expect(device.snapshot().led).toBe('purple');
+    expect(device.snapshot().leds[0]).toBe('purple');
   });
 
   it('evaluates variables, arithmetic and loops', async () => {
@@ -117,23 +129,23 @@ describe('Runtime', () => {
   });
 
   it('repeatUntil and if/else branch on sensors', async () => {
-    const isRed: Expr = { k: 'bin', op: '=', a: { k: 'sensor', read: { type: 'color' } }, b: { k: 'str', v: 'red' } };
+    const isRed: Expr = { k: 'bin', op: '=', a: { k: 'sensor', read: { type: 'color', port: 'I2C1' } }, b: { k: 'str', v: 'red' } };
     device.setSensors({ color: 'red' });
     const done = rt.run(
       program(
         thread([
-          st({ op: 'if', cond: isRed, then: [st({ op: 'led', color: 'red' })], else: [st({ op: 'led', color: 'white' })] }),
+          st({ op: 'if', cond: isRed, then: [st({ op: 'led', target: 'both', color: 'red' })], else: [st({ op: 'led', target: 'both', color: 'white' })] }),
           st({
             op: 'repeatUntil',
-            cond: { k: 'sensor', read: { type: 'button' } },
+            cond: { k: 'sensor', read: { type: 'button', button: 'up' } },
             body: [st({ op: 'changeVar', name: 'x', by: num(1) })],
           }),
         ]),
       ),
     );
     await vi.advanceTimersByTimeAsync(100);
-    expect(device.snapshot().led).toBe('red');
-    device.setSensors({ button: true });
+    expect(device.snapshot().leds[0]).toBe('red');
+    device.setSensors({ buttons: { up: true } });
     await vi.advanceTimersByTimeAsync(100);
     await done;
     expect(rt.variables.get('x')).toBeGreaterThan(0);

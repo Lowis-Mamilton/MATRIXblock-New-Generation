@@ -1,6 +1,9 @@
 import type {
   AmountUnit,
+  ButtonId,
+  I2cPort,
   LedColor,
+  LedTarget,
   MotorPort,
   SensorColor,
   ServoPort,
@@ -29,19 +32,19 @@ export interface Device {
 
   /** Servo angle 0..180 degrees. */
   servoSet(port: ServoPort, angle: number): void;
-  ledSet(color: LedColor): void;
+  ledSet(target: LedTarget, color: LedColor): void;
   /** Play a MIDI note for `secs` seconds. */
   beep(note: number, secs: number, signal: AbortSignal): Promise<void>;
 
-  readColor(): SensorColor;
+  readColor(port: I2cPort): SensorColor;
   /** Distance in centimetres. */
-  readDistance(): number;
+  readDistance(port: I2cPort): number;
   /** Tilt in degrees. */
   readTilt(axis: TiltAxis): number;
-  readButton(): boolean;
+  readButton(button: ButtonId): boolean;
 
   /** Subscribe to on-board button presses; returns an unsubscribe function. */
-  onButtonPress(cb: () => void): () => void;
+  onButtonPress(cb: (button: ButtonId) => void): () => void;
 
   /** Stop all motors and sound (program ended or stopped). */
   halt(): void;

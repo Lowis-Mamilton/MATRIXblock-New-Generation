@@ -1,6 +1,7 @@
 import type { BlockMode } from '../blocks/setup';
 import type { SWorkspace } from '../ir/compile';
-import { MOTOR_PORTS, type DriveConfig } from '../ir/types';
+import { I2C_PORTS, MOTOR_PORTS, type DriveConfig, type SensorConfig } from '../ir/types';
+import { DEFAULT_SENSORS } from '../ir/compile';
 
 export const FILE_EXTENSION = '.mbng';
 export const FILE_FORMAT = 'matrixblock-ng';
@@ -13,6 +14,8 @@ export interface ProjectFile {
   name: string;
   mode: BlockMode;
   drive: DriveConfig;
+  /** I2C ports of the colour and distance sensors used by Icon blocks. */
+  sensors: SensorConfig;
   workspace: SWorkspace;
 }
 
@@ -26,6 +29,7 @@ export function newProject(name: string, mode: BlockMode): ProjectFile {
     name,
     mode,
     drive: { ...DEFAULT_DRIVE },
+    sensors: { ...DEFAULT_SENSORS },
     workspace: { blocks: { blocks: [{ type: start, id: 'start', x: 60, y: 60 } as never] } },
   };
 }
@@ -43,14 +47,21 @@ export function parseProject(text: string): ProjectFile {
   if (typeof p.version !== 'number' || p.version > FILE_VERSION) throw new Error('made by a newer version');
   if (p.mode !== 'icon' && p.mode !== 'word') throw new Error('unknown block mode');
   if (!p.workspace || typeof p.workspace !== 'object') throw new Error('missing blocks');
-  const port = (v: unknown, fallback: DriveConfig['left']) =>
-    MOTOR_PORTS.includes(v as never) ? (v as DriveConfig['left']) : fallback;
+  const pick = <T extends string>(options: readonly T[], v: unknown, fallback: T): T =>
+    options.includes(v as T) ? (v as T) : fallback;
   return {
     format: FILE_FORMAT,
     version: FILE_VERSION,
     name: typeof p.name === 'string' && p.name.trim() ? p.name : 'project',
     mode: p.mode,
-    drive: { left: port(p.drive?.left, DEFAULT_DRIVE.left), right: port(p.drive?.right, DEFAULT_DRIVE.right) },
+    drive: {
+      left: pick(MOTOR_PORTS, p.drive?.left, DEFAULT_DRIVE.left),
+      right: pick(MOTOR_PORTS, p.drive?.right, DEFAULT_DRIVE.right),
+    },
+    sensors: {
+      color: pick(I2C_PORTS, p.sensors?.color, DEFAULT_SENSORS.color),
+      distance: pick(I2C_PORTS, p.sensors?.distance, DEFAULT_SENSORS.distance),
+    },
     workspace: p.workspace,
   };
 }

@@ -14,6 +14,12 @@ describe('project file format', () => {
     expect(() => parseProject(JSON.stringify({ ...newProject('x', 'icon'), mode: 'python' }))).toThrow();
   });
 
+  it('fills in sensor ports for older files', () => {
+    const { sensors: _drop, ...old } = newProject('x', 'icon');
+    void _drop;
+    expect(parseProject(JSON.stringify(old)).sensors).toEqual({ color: 'I2C1', distance: 'I2C2' });
+  });
+
   it('repairs bad drive ports and empty names', () => {
     const p = parseProject(JSON.stringify({ ...newProject('', 'icon'), drive: { left: 'M9', right: 'M3' } }));
     expect(p.drive).toEqual({ left: 'M1', right: 'M3' });

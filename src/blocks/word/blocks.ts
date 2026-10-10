@@ -5,7 +5,7 @@
  */
 import * as Blockly from 'blockly/core';
 import 'blockly/blocks';
-import { LED_COLORS, MOTOR_PORTS, SENSOR_COLORS, SERVO_PORTS } from '../../ir/types';
+import { I2C_PORTS, LED_COLORS, MOTOR_PORTS, SENSOR_COLORS, SERVO_PORTS } from '../../ir/types';
 
 const msg = (key: string) => `%{BKY_${key}}`;
 const dropdown = (name: string, options: [string, string][]) => ({ type: 'field_dropdown', name, options });
@@ -14,6 +14,20 @@ const statement = (name: string) => ({ type: 'input_statement', name });
 
 const motorPort = dropdown('PORT', MOTOR_PORTS.map((p) => [p, p]));
 const servoPort = dropdown('PORT', SERVO_PORTS.map((p) => [p, p]));
+const i2cPort = (initial: number) => {
+  // Rotate the list so the dropdown's first (default) option is `initial`.
+  const ports = [...I2C_PORTS.slice(initial), ...I2C_PORTS.slice(0, initial)];
+  return dropdown('PORT', ports.map((p) => [p, p]));
+};
+const button = dropdown('BTN', [
+  [msg('MB_BTN_UP'), 'up'],
+  [msg('MB_BTN_DOWN'), 'down'],
+]);
+const ledTarget = dropdown('WHICH', [
+  [msg('MB_LED_BOTH'), 'both'],
+  [msg('MB_LED_1'), '1'],
+  [msg('MB_LED_2'), '2'],
+]);
 const unit = dropdown('UNIT', [
   [msg('MB_UNIT_SEC'), 'sec'],
   [msg('MB_UNIT_ROT'), 'rot'],
@@ -33,8 +47,11 @@ const NOTE_NAMES = ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5', 'D5', 'E5', 
 const NOTE_MIDI = [60, 62, 64, 65, 67, 69, 71, 72, 74, 76, 77, 79, 81, 83, 84];
 const note = dropdown('NOTE', NOTE_NAMES.map((n, i) => [n, String(NOTE_MIDI[i])]));
 
+const tip = (type: string) => msg(`MB_TIP_${type.toUpperCase()}`);
+
 const stmt = (type: string, style: string, message0: string, args0: object[] = [], extra: object = {}) => ({
   type,
+  tooltip: tip(type),
   style,
   message0,
   args0,
@@ -45,6 +62,7 @@ const stmt = (type: string, style: string, message0: string, args0: object[] = [
 });
 const hat = (type: string, message0: string, args0: object[] = []) => ({
   type,
+  tooltip: tip(type),
   style: 'events_hat',
   message0,
   args0,
@@ -52,6 +70,7 @@ const hat = (type: string, message0: string, args0: object[] = []) => ({
 });
 const reporter = (type: string, style: string, message0: string, output: string, args0: object[] = []) => ({
   type,
+  tooltip: tip(type),
   style,
   message0,
   args0,
@@ -61,7 +80,7 @@ const reporter = (type: string, style: string, message0: string, output: string,
 Blockly.common.defineBlocksWithJsonArray([
   // ---- events ----
   hat('w_when_start', msg('MB_WHEN_START')),
-  hat('w_when_button', msg('MB_WHEN_BUTTON')),
+  hat('w_when_button', msg('MB_WHEN_BUTTON'), [button]),
   hat('w_when_message', msg('MB_WHEN_MESSAGE'), [{ type: 'field_input', name: 'MSG', text: 'message1' }]),
   stmt('w_broadcast', 'events_blocks', msg('MB_BROADCAST'), [{ type: 'field_input', name: 'MSG', text: 'message1' }]),
 
@@ -81,9 +100,9 @@ Blockly.common.defineBlocksWithJsonArray([
   stmt('w_servo', 'motors_blocks', msg('MB_SERVO'), [servoPort, value('ANGLE', 'Number')]),
 
   // ---- sensors ----
-  reporter('w_color', 'sensors_blocks', msg('MB_COLOR'), 'String'),
-  reporter('w_color_is', 'sensors_blocks', msg('MB_COLOR_IS'), 'Boolean', [sensorColour]),
-  reporter('w_distance', 'sensors_blocks', msg('MB_DISTANCE'), 'Number'),
+  reporter('w_color', 'sensors_blocks', msg('MB_COLOR'), 'String', [i2cPort(0)]),
+  reporter('w_color_is', 'sensors_blocks', msg('MB_COLOR_IS'), 'Boolean', [i2cPort(0), sensorColour]),
+  reporter('w_distance', 'sensors_blocks', msg('MB_DISTANCE'), 'Number', [i2cPort(1)]),
   reporter('w_tilt', 'sensors_blocks', msg('MB_TILT'), 'Number', [
     dropdown('AXIS', [
       [msg('MB_AXIS_PITCH'), 'pitch'],
@@ -91,10 +110,10 @@ Blockly.common.defineBlocksWithJsonArray([
       [msg('MB_AXIS_YAW'), 'yaw'],
     ]),
   ]),
-  reporter('w_button', 'sensors_blocks', msg('MB_BUTTON'), 'Boolean'),
+  reporter('w_button', 'sensors_blocks', msg('MB_BUTTON'), 'Boolean', [button]),
 
   // ---- light & sound ----
-  stmt('w_led', 'looks_blocks', msg('MB_LED'), [ledColour]),
+  stmt('w_led', 'looks_blocks', msg('MB_LED'), [ledTarget, ledColour]),
   stmt('w_beep', 'looks_blocks', msg('MB_BEEP'), [note, value('SECS', 'Number')]),
 
   // ---- control ----

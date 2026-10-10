@@ -1,25 +1,5 @@
-/** Browser persistence (IndexedDB auto-save) and `.mbng` file import/export. */
-import { get, set } from 'idb-keyval';
+/** `.mbng` project file import / export. */
 import { FILE_EXTENSION, parseProject, type ProjectFile } from './format';
-
-const CURRENT_KEY = 'mb.currentProject';
-
-export async function loadCurrent(): Promise<ProjectFile | null> {
-  try {
-    const raw = await get<string>(CURRENT_KEY);
-    return raw ? parseProject(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-export async function saveCurrent(p: ProjectFile): Promise<void> {
-  try {
-    await set(CURRENT_KEY, JSON.stringify(p));
-  } catch {
-    /* private mode or storage full: the explicit Save still works */
-  }
-}
 
 const fileName = (p: ProjectFile) => `${p.name.replace(/[\/:*?"<>|]+/g, '_') || 'project'}${FILE_EXTENSION}`;
 

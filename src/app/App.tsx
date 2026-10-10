@@ -2,16 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BlocklyEditor, type EditorApi } from './BlocklyEditor';
 import { TopBar } from './TopBar';
-import { ModePicker } from './ModePicker';
+import { NewProjectDialog } from './NewProjectDialog';
+import { ProjectHome } from './ProjectHome';
 import { SettingsDialog } from './SettingsDialog';
 import { useApp } from './store';
 import { runProgram, stopProgram } from './engine';
 import { unlockAudio } from './audio';
 import { SimulatorPanel } from '../simulator/SimulatorPanel';
 import { compile, CompileError } from '../ir/compile';
-import { newProject } from '../project/format';
-import { exportProject, importProject, loadCurrent } from '../project/storage';
+import { newProject, type ProjectFile } from '../project/format';
+import { exportProject, importProject } from '../project/storage';
+import { library } from '../project/library';
 import type { BlockMode } from '../blocks/setup';
+import type { Example } from '../examples';
 import type { Lang } from '../i18n/strings';
 
 export function App() {
@@ -21,14 +24,18 @@ export function App() {
   const app = useApp.getState;
   const editor = useRef<EditorApi>(null);
   const [booting, setBooting] = useState(true);
-  const [picking, setPicking] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  // Reopen the project the student was last working on.
   useEffect(() => {
-    void loadCurrent().then((p) => {
-      if (p) app().loadProject(p);
+    void (async () => {
+      await library.migrateLegacy();
+      const id = await library.lastOpened();
+      const p = id ? await library.load(id) : null;
+      if (id && p) app().openProject(id, p);
       setBooting(false);
-    });
+    })();
   }, [app]);
 
   useEffect(() => {
@@ -37,13 +44,39 @@ export function App() {
     return () => clearTimeout(timer);
   }, [message, app]);
 
+  /** Flush pending edits of the open project before leaving it. */
+  const saveOpen = async () => {
+    const { project: p, projectId } = app();
+    if (p && projectId && editor.current) await library.save(projectId, { ...p, workspace: editor.current.save() });
+  };
+
+  const open = async (p: ProjectFile, id?: string) => {
+    stopProgram();
+    await saveOpen();
+    const projectId = id ?? (await library.create(p));
+    app().openProject(projectId, p);
+    setCreating(false);
+  };
+
+  const openById = async (id: string) => {
+    const p = await library.load(id);
+    if (p) await open(p, id);
+    else app().showMessage('error', t('ui.openFailed'));
+  };
+
+  const goHome = async () => {
+    stopProgram();
+    await saveOpen();
+    app().closeProject();
+  };
+
   const run = () => {
     if (!project || !editor.current) return;
     unlockAudio();
     editor.current.clearHighlights();
     let program;
     try {
-      program = compile(editor.current.save());
+      program = compile(editor.current.save(), project.sensors);
     } catch (e) {
       if (e instanceof CompileError) editor.current.select(e.blockId);
       app().showMessage('error', t('ui.compileError') + (e as Error).message);
@@ -58,41 +91,35 @@ export function App() {
     });
   };
 
-  const create = (mode: BlockMode) => {
-    stopProgram();
-    app().loadProject(newProject(t('ui.untitled'), mode));
-    setPicking(false);
-  };
-
-  const open = async () => {
+  const importFile = async () => {
     try {
       const p = await importProject();
-      if (p) {
-        stopProgram();
-        app().loadProject(p);
-      }
+      if (p) await open(p);
     } catch (e) {
       app().showMessage('error', t('ui.openFailed') + (e as Error).message);
     }
   };
 
-  const save = () => {
-    if (project && editor.current) void exportProject({ ...project, workspace: editor.current.save() });
-  };
+  const createBlank = (mode: BlockMode) => void open(newProject(t('ui.untitled'), mode));
+  const createFromExample = (e: Example) =>
+    void open({ ...newProject(t(`examples.${e.key}.title`), e.mode), workspace: structuredClone(e.workspace) });
 
-  const startNew = () => {
-    if (!project || window.confirm(t('ui.confirmNew'))) setPicking(true);
+  const exportFile = () => {
+    if (project && editor.current) void exportProject({ ...project, workspace: editor.current.save() });
   };
 
   if (booting) return null;
 
   return (
-    <div className={`app ${project ? `mode-${project.mode}` : ''}`}>
+    <div className={`app ${project ? `mode-${project.mode}` : 'at-home'}`}>
       <TopBar
-        onNew={startNew}
-        onOpen={open}
-        onSave={save}
+        onHome={goHome}
+        onNew={() => setCreating(true)}
+        onOpen={importFile}
+        onSave={exportFile}
         onSettings={() => setSettingsOpen(true)}
+        onUndo={() => editor.current?.undo()}
+        onRedo={() => editor.current?.redo()}
         onRun={run}
         onStop={stopProgram}
       />
@@ -105,9 +132,10 @@ export function App() {
             lang={lang}
             initial={project.workspace}
             onChange={(ws) => app().updateWorkspace(ws)}
+            onHistory={(h) => app().setHistory(h)}
           />
         ) : (
-          <div className="editor" />
+          <ProjectHome onOpen={(id) => void openById(id)} onNew={() => setCreating(true)} onImport={importFile} />
         )}
         <aside className="sim-panel" aria-label={t('ui.simulator')}>
           <button
@@ -124,7 +152,9 @@ export function App() {
         </aside>
       </main>
 
-      {(picking || !project) && <ModePicker onPick={create} onCancel={project ? () => setPicking(false) : undefined} />}
+      {creating && (
+        <NewProjectDialog onBlank={createBlank} onExample={createFromExample} onCancel={() => setCreating(false)} />
+      )}
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       {message && (
         <div className={`toast toast-${message.kind}`} role="alert" onClick={() => app().clearMessage()}>

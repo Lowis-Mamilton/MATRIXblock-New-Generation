@@ -12,6 +12,8 @@ export interface EditorApi {
   highlight(blockId: string, on: boolean): void;
   clearHighlights(): void;
   select(blockId: string): void;
+  undo(): void;
+  redo(): void;
 }
 
 interface Props {
@@ -19,6 +21,7 @@ interface Props {
   lang: Lang;
   initial: SWorkspace;
   onChange(ws: SWorkspace): void;
+  onHistory?(h: { canUndo: boolean; canRedo: boolean }): void;
   ref?: Ref<EditorApi>;
 }
 
@@ -26,13 +29,15 @@ interface Props {
  * Hosts a Blockly workspace. It is re-created when the mode or language
  * changes (block text is baked in at creation), carrying the current blocks over.
  */
-export function BlocklyEditor({ mode, lang, initial, onChange, ref }: Props) {
+export function BlocklyEditor({ mode, lang, initial, onChange, onHistory, ref }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const ws = useRef<Blockly.WorkspaceSvg | null>(null);
   const state = useRef(initial);
   const highlighted = useRef(new Set<string>());
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onHistoryRef = useRef(onHistory);
+  onHistoryRef.current = onHistory;
 
   useImperativeHandle(ref, () => ({
     save: () => (ws.current ? (Blockly.serialization.workspaces.save(ws.current) as SWorkspace) : state.current),
@@ -48,6 +53,8 @@ export function BlocklyEditor({ mode, lang, initial, onChange, ref }: Props) {
       }
       highlighted.current.clear();
     },
+    undo: () => ws.current?.undo(false),
+    redo: () => ws.current?.undo(true),
     select(id) {
       const block = ws.current?.getBlockById(id);
       if (block) {
@@ -73,6 +80,10 @@ export function BlocklyEditor({ mode, lang, initial, onChange, ref }: Props) {
     workspace.scrollCenter();
 
     const listener = (e: Blockly.Events.Abstract) => {
+      onHistoryRef.current?.({
+        canUndo: workspace.getUndoStack().length > 0,
+        canRedo: workspace.getRedoStack().length > 0,
+      });
       if (e.isUiEvent) return;
       const saved = Blockly.serialization.workspaces.save(workspace) as SWorkspace;
       state.current = saved;

@@ -19,7 +19,7 @@ describe('compile (Word)', () => {
       },
     });
     expect(prog.threads).toEqual([
-      { id: 'h1', trigger: { k: 'start' }, body: [{ id: 'a', op: 'led', color: 'red' }] },
+      { id: 'h1', trigger: { k: 'start' }, body: [{ id: 'a', op: 'led', target: 'both', color: 'red' }] },
       { id: 'h2', trigger: { k: 'message', msg: 'go' }, body: [] },
     ]);
   });
@@ -104,6 +104,25 @@ describe('compile (Word)', () => {
 });
 
 describe('compile (Icon)', () => {
+  it('compiles button hats and colour waits on the configured port', () => {
+    const prog = compile(
+      {
+        blocks: {
+          blocks: [
+            chain({ type: 'i_when_button', id: 'h', fields: { BTN: 'down' } }, { type: 'i_wait_sensor', id: 'w', fields: { COND: 'red' } }),
+          ],
+        },
+      },
+      { color: 'I2C3', distance: 'I2C4' },
+    );
+    expect(prog.threads[0].trigger).toEqual({ k: 'button', button: 'down' });
+    expect(prog.threads[0].body[0]).toEqual({
+      id: 'w',
+      op: 'waitUntil',
+      cond: { k: 'bin', op: '=', a: { k: 'sensor', read: { type: 'color', port: 'I2C3' } }, b: { k: 'str', v: 'red' } },
+    });
+  });
+
   it('maps icon presets to concrete commands', () => {
     const prog = compile({
       blocks: {
@@ -113,21 +132,23 @@ describe('compile (Icon)', () => {
             { type: 'i_move', id: 'f', fields: { DIR: 'left', SECS: 2, SPEED: 'fast' } },
             { type: 'i_motor', id: 'm', fields: { PORT: 'M3', DIR: 'ccw', SECS: 1, SPEED: 'slow' } },
             { type: 'i_wait_sensor', id: 'w', fields: { COND: 'near' } },
+            { type: 'i_wait_sensor', id: 'w2', fields: { COND: 'down' } },
             {
               type: 'i_repeat',
               id: 'r',
               fields: { TIMES: 2 },
-              inputs: { DO: { block: { type: 'i_led', id: 'l', fields: { COLOR: 'green' } } } },
+              inputs: { DO: { block: { type: 'i_led', id: 'l', fields: { WHICH: '2', COLOR: 'green' } } } },
             },
           ),
         ],
       },
-    });
+    }, { color: 'I2C3', distance: 'I2C4' });
     expect(prog.threads[0].body).toEqual([
       { id: 'f', op: 'moveSteer', steer: { k: 'num', v: -100 }, speed: { k: 'num', v: 100 }, limit: { amount: { k: 'num', v: 2 }, unit: 'sec' } },
       { id: 'm', op: 'motorRun', port: 'M3', speed: { k: 'num', v: -30 }, limit: { amount: { k: 'num', v: 1 }, unit: 'sec' } },
-      { id: 'w', op: 'waitUntil', cond: { k: 'bin', op: '<', a: { k: 'sensor', read: { type: 'distance' } }, b: { k: 'num', v: 10 } } },
-      { id: 'r', op: 'repeat', times: { k: 'num', v: 2 }, body: [{ id: 'l', op: 'led', color: 'green' }] },
+      { id: 'w', op: 'waitUntil', cond: { k: 'bin', op: '<', a: { k: 'sensor', read: { type: 'distance', port: 'I2C4' } }, b: { k: 'num', v: 10 } } },
+      { id: 'w2', op: 'waitUntil', cond: { k: 'sensor', read: { type: 'button', button: 'down' } } },
+      { id: 'r', op: 'repeat', times: { k: 'num', v: 2 }, body: [{ id: 'l', op: 'led', target: '2', color: 'green' }] },
     ]);
   });
 });

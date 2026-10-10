@@ -10,6 +10,8 @@ const svg = (body: string) =>
 
 export const GLYPHS = {
   start: svg('<path d="M13 9 L31 20 L13 31 Z" fill="#fff"/>'),
+  buttonUp: svg('<rect x="7" y="7" width="26" height="26" rx="6"/><path d="M13 23 L20 15 L27 23" stroke-width="3.6"/>'),
+  buttonDown: svg('<rect x="7" y="7" width="26" height="26" rx="6"/><path d="M13 17 L20 25 L27 17" stroke-width="3.6"/>'),
   button: svg('<rect x="8" y="8" width="24" height="24" rx="5"/><circle cx="20" cy="20" r="6" fill="#fff"/>'),
   forward: svg('<path d="M20 32 V9 M11 17 L20 8 L29 17"/>'),
   backward: svg('<path d="M20 8 V31 M11 23 L20 32 L29 23"/>'),

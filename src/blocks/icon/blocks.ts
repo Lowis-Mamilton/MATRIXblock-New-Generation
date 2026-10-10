@@ -29,9 +29,24 @@ export const PICKERS = {
     options: LED_COLORS.map((c) => ({ value: c, swatch: SWATCHES[c] })),
     columns: 5,
   },
+  ledTarget: {
+    options: [
+      { value: 'both', text: '1+2' },
+      { value: '1', text: '1' },
+      { value: '2', text: '2' },
+    ],
+  },
+  button: {
+    big: true,
+    options: [
+      { value: 'up', glyph: 'buttonUp' },
+      { value: 'down', glyph: 'buttonDown' },
+    ],
+  },
   cond: {
     options: [
-      { value: 'button', glyph: 'button' },
+      { value: 'up', glyph: 'buttonUp' },
+      { value: 'down', glyph: 'buttonDown' },
       { value: 'near', glyph: 'near' },
       ...['red', 'yellow', 'green', 'blue', 'black', 'white'].map((c) => ({ value: c, swatch: SWATCHES[c] })),
     ],
@@ -91,7 +106,7 @@ function define(type: string, d: IconDef) {
 }
 
 define('i_start', { glyph: 'start', colour: C.events, hat: true });
-define('i_when_button', { glyph: 'button', colour: C.events, hat: true });
+define('i_when_button', { glyph: { name: 'BTN', picker: PICKERS.button }, colour: C.events, hat: true });
 
 define('i_move', {
   glyph: { name: 'DIR', picker: PICKERS.direction },
@@ -123,16 +138,30 @@ define('i_servo', {
 });
 
 define('i_wait', { glyph: 'wait', colour: C.control, fields: [['SECS', PICKERS.secs, '1']] });
-define('i_wait_sensor', { glyph: 'waitSensor', colour: C.sensors, fields: [['COND', PICKERS.cond, 'button']] });
+define('i_wait_sensor', { glyph: 'waitSensor', colour: C.sensors, fields: [['COND', PICKERS.cond, 'up']] });
 define('i_repeat', { glyph: 'repeat', colour: C.control, statement: true, fields: [['TIMES', PICKERS.times, '2']] });
 define('i_forever', { glyph: 'forever', colour: C.control, statement: true, end: true });
 
-define('i_led', { glyph: 'led', colour: C.looks, fields: [['COLOR', PICKERS.led, 'red']] });
+define('i_led', {
+  glyph: 'led',
+  colour: C.looks,
+  fields: [
+    ['WHICH', PICKERS.ledTarget, 'both'],
+    ['COLOR', PICKERS.led, 'red'],
+  ],
+});
 define('i_sound', { glyph: 'note', colour: C.looks, fields: [['NOTE', PICKERS.note, '60']] });
 
 /** Toolbox categories, in display order. `fields` pre-set a variant. */
 export const ICON_TOOLBOX: { category: keyof typeof C; blocks: { type: string; fields?: Record<string, string> }[] }[] = [
-  { category: 'events', blocks: [{ type: 'i_start' }, { type: 'i_when_button' }] },
+  {
+    category: 'events',
+    blocks: [
+      { type: 'i_start' },
+      { type: 'i_when_button', fields: { BTN: 'up' } },
+      { type: 'i_when_button', fields: { BTN: 'down' } },
+    ],
+  },
   {
     category: 'movement',
     blocks: [

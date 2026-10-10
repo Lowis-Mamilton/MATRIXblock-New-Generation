@@ -52,7 +52,9 @@ export class Runtime {
     const done = new Promise<void>((resolve) => (this.finish = resolve));
 
     if (program.threads.some((t) => t.trigger.k === 'button')) {
-      this.unsubscribeButton = this.device.onButtonPress(() => this.trigger((t) => t.k === 'button'));
+      this.unsubscribeButton = this.device.onButtonPress((b) =>
+        this.trigger((t) => t.k === 'button' && t.button === b),
+      );
     }
     this.trigger((t) => t.k === 'start');
     this.checkFinished();
@@ -152,7 +154,7 @@ export class Runtime {
       case 'servo':
         return d.servoSet(s.port, n(s.angle));
       case 'led':
-        return d.ledSet(s.color);
+        return d.ledSet(s.target, s.color);
       case 'beep':
         return d.beep(n(s.note), n(s.secs), signal);
       case 'wait':
@@ -239,13 +241,13 @@ export class Runtime {
     const d = this.device;
     switch (r.type) {
       case 'color':
-        return d.readColor();
+        return d.readColor(r.port);
       case 'distance':
-        return d.readDistance();
+        return d.readDistance(r.port);
       case 'tilt':
         return d.readTilt(r.axis);
       case 'button':
-        return d.readButton();
+        return d.readButton(r.button);
       case 'motorAngle':
         return Math.round(d.motorAngle(r.port));
     }

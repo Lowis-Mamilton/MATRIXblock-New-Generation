@@ -11,12 +11,19 @@ export const SERVO_PORTS = ['RC1', 'RC2', 'RC3', 'RC4'] as const;
 export const LED_COLORS = ['off', 'red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple', 'white'] as const;
 export const SENSOR_COLORS = ['none', 'black', 'white', 'red', 'yellow', 'green', 'blue'] as const;
 export const TILT_AXES = ['pitch', 'roll', 'yaw'] as const;
+export const I2C_PORTS = ['I2C1', 'I2C2', 'I2C3', 'I2C4'] as const;
+export const BUTTONS = ['up', 'down'] as const;
+/** Which of the two on-board RGB LEDs. */
+export const LED_TARGETS = ['both', '1', '2'] as const;
 
 export type MotorPort = (typeof MOTOR_PORTS)[number];
 export type ServoPort = (typeof SERVO_PORTS)[number];
 export type LedColor = (typeof LED_COLORS)[number];
 export type SensorColor = (typeof SENSOR_COLORS)[number];
 export type TiltAxis = (typeof TILT_AXES)[number];
+export type I2cPort = (typeof I2C_PORTS)[number];
+export type ButtonId = (typeof BUTTONS)[number];
+export type LedTarget = (typeof LED_TARGETS)[number];
 
 /** How long a movement lasts: seconds, motor degrees, or motor rotations. */
 export type AmountUnit = 'sec' | 'deg' | 'rot';
@@ -28,10 +35,10 @@ export type BinOp =
   | 'and' | 'or';
 
 export type SensorRead =
-  | { type: 'color' }
-  | { type: 'distance' }
+  | { type: 'color'; port: I2cPort }
+  | { type: 'distance'; port: I2cPort }
   | { type: 'tilt'; axis: TiltAxis }
-  | { type: 'button' }
+  | { type: 'button'; button: ButtonId }
   | { type: 'motorAngle'; port: MotorPort };
 
 export type Expr =
@@ -60,7 +67,7 @@ export type Stmt =
   | S<{ op: 'moveTank'; left: Expr; right: Expr; limit?: Amount }>
   | S<{ op: 'moveStop'; mode: StopMode }>
   | S<{ op: 'servo'; port: ServoPort; angle: Expr }>
-  | S<{ op: 'led'; color: LedColor }>
+  | S<{ op: 'led'; target: LedTarget; color: LedColor }>
   | S<{ op: 'beep'; note: Expr; secs: Expr }>
   | S<{ op: 'wait'; secs: Expr }>
   | S<{ op: 'waitUntil'; cond: Expr }>
@@ -77,7 +84,7 @@ export type StmtOp = Stmt['op'];
 
 export type Trigger =
   | { k: 'start' }
-  | { k: 'button' }
+  | { k: 'button'; button: ButtonId }
   | { k: 'message'; msg: string };
 
 export interface Thread {
@@ -91,6 +98,12 @@ export interface Thread {
 export interface DriveConfig {
   left: MotorPort;
   right: MotorPort;
+}
+
+/** Where Icon-mode sensor blocks read from (Word blocks name their port). */
+export interface SensorConfig {
+  color: I2cPort;
+  distance: I2cPort;
 }
 
 export interface Program {
