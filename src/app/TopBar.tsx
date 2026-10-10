@@ -3,6 +3,7 @@ import { useApp } from './store';
 import { setLanguage } from '../i18n';
 import { LANGUAGES, type Lang } from '../i18n/strings';
 import { bluetoothAvailable } from '../devices/ble/webBluetooth';
+import { isIOS } from '../platform';
 
 interface Props {
   onHome(): void;
@@ -85,10 +86,10 @@ export function TopBar({ onHome, onNew, onOpen, onSave, onSettings, onUndo, onRe
         type="button"
         className={`connect ${connection.status}`}
         onClick={onConnect}
-        disabled={!canBluetooth || connection.status === 'connecting'}
+        disabled={connection.status === 'connecting'}
         title={
           !canBluetooth
-            ? t('ui.noBluetooth')
+            ? t(isIOS() ? 'ui.noBluetoothIOS' : 'ui.noBluetooth')
             : connection.status === 'connected'
               ? `${t('ui.disconnect')} ${connection.name ?? ''}`
               : t('ui.connectHint')

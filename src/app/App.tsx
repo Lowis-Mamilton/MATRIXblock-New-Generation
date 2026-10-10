@@ -5,9 +5,12 @@ import { TopBar } from './TopBar';
 import { NewProjectDialog } from './NewProjectDialog';
 import { ProjectHome } from './ProjectHome';
 import { SettingsDialog } from './SettingsDialog';
+import { ExportDialog } from './ExportDialog';
 import { useApp } from './store';
 import { connectBoard, connectedBoard, disconnectBoard, runProgram, stopProgram } from './engine';
 import { FirmwareMismatch } from '../devices/ble/BleR4Device';
+import { bluetoothAvailable } from '../devices/ble/webBluetooth';
+import { isIOS } from '../platform';
 import { unlockAudio } from './audio';
 import { SimulatorPanel } from '../simulator/SimulatorPanel';
 import { compile, CompileError } from '../ir/compile';
@@ -27,6 +30,7 @@ export function App() {
   const [booting, setBooting] = useState(true);
   const [creating, setCreating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [manualExport, setManualExport] = useState<{ text: string; fileName: string } | null>(null);
 
   // Reopen the project the student was last working on.
   useEffect(() => {
@@ -93,6 +97,10 @@ export function App() {
   };
 
   const toggleConnection = async () => {
+    if (!bluetoothAvailable()) {
+      app().showMessage('info', t(isIOS() ? 'ui.noBluetoothIOS' : 'ui.noBluetooth'));
+      return;
+    }
     if (connectedBoard()) {
       disconnectBoard();
       app().setConnection({ status: 'idle' });
@@ -128,8 +136,10 @@ export function App() {
   const createFromExample = (e: Example) =>
     void open({ ...newProject(t(`examples.${e.key}.title`), e.mode), workspace: structuredClone(e.workspace) });
 
-  const exportFile = () => {
-    if (project && editor.current) void exportProject({ ...project, workspace: editor.current.save() });
+  const exportFile = async () => {
+    if (!project || !editor.current) return;
+    const result = await exportProject({ ...project, workspace: editor.current.save() });
+    if (result.kind === 'manual') setManualExport(result);
   };
 
   if (booting) return null;
@@ -140,7 +150,7 @@ export function App() {
         onHome={goHome}
         onNew={() => setCreating(true)}
         onOpen={importFile}
-        onSave={exportFile}
+        onSave={() => void exportFile()}
         onSettings={() => setSettingsOpen(true)}
         onUndo={() => editor.current?.undo()}
         onRedo={() => editor.current?.redo()}
@@ -181,6 +191,9 @@ export function App() {
         <NewProjectDialog onBlank={createBlank} onExample={createFromExample} onCancel={() => setCreating(false)} />
       )}
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+      {manualExport && (
+        <ExportDialog fileName={manualExport.fileName} text={manualExport.text} onClose={() => setManualExport(null)} />
+      )}
       {message && (
         <div className={`toast toast-${message.kind}`} role="alert" onClick={() => app().clearMessage()}>
           {message.text}

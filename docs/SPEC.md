@@ -10,7 +10,7 @@ It is a ground-up rewrite. The previous MATRIXblock (Electron, blocks → Arduin
 |---|---|
 | Hardware | MATRIX Mini R4 (DC motors with encoders) |
 | Execution | Tethered: the program runs in the browser and drives the board live over BLE |
-| Platform | Web app + PWA, Chrome / Edge first (Windows, Chromebook, Android; Apple users install Chrome) |
+| Platform | Web app + PWA. Chrome / Edge on Windows, macOS, Chromebook and Android. On iPad / iPhone every browser is WebKit without Web Bluetooth, so students use the **Bluefy** browser there; editing and the simulator also work in Safari |
 | Stack | Vite + TypeScript + React + Blockly, custom renderer for horizontal Icon blocks |
 | Block modes | Icon (left → right, younger students, palette along the bottom) and Word (top → bottom, older students, categories on the left). Chosen when a project is created; projects never convert between modes |
 | Languages | i18n framework; Traditional Chinese (zh-TW) and English |

@@ -24,6 +24,7 @@ Blockly JSON → `src/ir/compile.ts` → IR (`src/ir/types.ts`) → `src/runtime
 - Git Bash rewrites `BASE_PATH=/x/` into a Windows path. Test the Pages build with `MSYS_NO_PATHCONV=1 BASE_PATH=/MATRIXblock-New-Generation/ npm run build`.
 - Dev builds expose `window.__mbWorkspace` and `window.__mbBlockly` for driving the editor from browser devtools.
 - The Web Bluetooth device chooser never appears in automation-launched Chrome. Real BLE tests need the user's own Chrome (they click Pair) or the Python tools in `firmware/tools/`.
+- iOS: every browser is WebKit without Web Bluetooth; students use Bluefy (it polyfills `navigator.bluetooth`). iOS in-app browsers silently ignore `<a download>`, so export there goes through the share sheet or the copy-the-text dialog (`exportMethods` in `src/project/storage.ts`).
 - Chrome throttles timers in background tabs to about once a second, so BLE timing must not rely on `setInterval` alone (see the heartbeat note in ADR 0003).
 
 ## Hardware (MATRIX Mini R4)

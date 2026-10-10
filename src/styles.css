@@ -447,6 +447,18 @@ button, input, select { font: inherit; color: inherit; }
 .example-list strong { font-size: 14px; color: var(--navy-ink); }
 .example-list span { font-size: 12.5px; color: #5b6480; line-height: 1.4; }
 
+.export-dialog { width: min(560px, 100%); }
+.export-dialog textarea {
+  width: 100%;
+  font: 12px/1.4 ui-monospace, Consolas, monospace;
+  border: 1px solid var(--mist);
+  border-radius: var(--radius-s);
+  padding: 8px;
+  resize: vertical;
+}
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.dialog-actions .primary, .dialog-actions .secondary { align-self: auto; }
+
 .setting { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-weight: 600; }
 .setting select { padding: 6px 10px; border-radius: var(--radius-s); border: 1px solid var(--mist); }
 

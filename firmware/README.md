@@ -33,6 +33,8 @@ The ESP32 bridge firmware that provides Bluetooth is too old. In Arduino IDE cho
 
 There is no need to pair the board in Windows settings; everything happens in the browser.
 
+**iPad / iPhone:** Safari and Chrome on iOS cannot use Bluetooth. Install the free **Bluefy** browser from the App Store and open MATRIXblock in it. In Bluefy, **Save** opens a dialog: use Share → Save to Files (or copy the text), and load the file later with **Open**.
+
 ## Flashing with arduino-cli (handy for many boards)
 
 ```bash
