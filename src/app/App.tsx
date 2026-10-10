@@ -6,7 +6,8 @@ import { NewProjectDialog } from './NewProjectDialog';
 import { ProjectHome } from './ProjectHome';
 import { SettingsDialog } from './SettingsDialog';
 import { useApp } from './store';
-import { runProgram, stopProgram } from './engine';
+import { connectBoard, connectedBoard, disconnectBoard, runProgram, stopProgram } from './engine';
+import { FirmwareMismatch } from '../devices/ble/BleR4Device';
 import { unlockAudio } from './audio';
 import { SimulatorPanel } from '../simulator/SimulatorPanel';
 import { compile, CompileError } from '../ir/compile';
@@ -91,6 +92,29 @@ export function App() {
     });
   };
 
+  const toggleConnection = async () => {
+    if (connectedBoard()) {
+      disconnectBoard();
+      app().setConnection({ status: 'idle' });
+      return;
+    }
+    app().setConnection({ status: 'connecting' });
+    try {
+      const board = await connectBoard(() => {
+        app().setConnection({ status: 'idle' });
+        app().showMessage('error', t('ui.connectionLost'));
+      });
+      app().setConnection({ status: 'connected', name: board.name, firmware: board.firmware });
+      app().showMessage('info', t('ui.connected', { name: board.name }));
+    } catch (e) {
+      app().setConnection({ status: 'idle' });
+      // The student closed the device chooser: nothing to report.
+      if ((e as Error).name === 'NotFoundError') return;
+      if (e instanceof FirmwareMismatch) app().showMessage('error', t('ui.firmwareMismatch', { version: e.firmware }));
+      else app().showMessage('error', t('ui.connectFailed') + (e as Error).message);
+    }
+  };
+
   const importFile = async () => {
     try {
       const p = await importProject();
@@ -120,6 +144,7 @@ export function App() {
         onSettings={() => setSettingsOpen(true)}
         onUndo={() => editor.current?.undo()}
         onRedo={() => editor.current?.redo()}
+        onConnect={() => void toggleConnection()}
         onRun={run}
         onStop={stopProgram}
       />

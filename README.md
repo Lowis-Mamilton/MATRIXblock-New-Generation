@@ -12,7 +12,7 @@ MATRIX Mini R4 的網頁版圖形化程式環境（PWA），有兩種積木模�
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # Vitest：IR 編譯、直譯器、存檔格式
+npm test           # Vitest：IR 編譯、直譯器、BLE 協定、專案庫、範例、字串
 npm run typecheck
 npm run build      # 輸出到 dist/（含 Service Worker）
 ```
@@ -26,12 +26,14 @@ npm run build      # 輸出到 dist/（含 Service Worker）
 |---|---|
 | `src/ir/` | 中介表示（IR）型別與編譯器（Blockly 存檔 JSON → IR，Icon / Word 共用） |
 | `src/runtime/` | 非同步直譯器：多線程、停止、等待條件、廣播、積木高亮 |
-| `src/devices/` | `Device` 介面；`sim/SimDevice` 是虛擬 R4（階段二會加 BLE 版） |
+| `src/devices/` | `Device` 介面；`sim/SimDevice` 是虛擬 R4，`ble/` 是藍牙實機（協定、BleR4Device、Web Bluetooth 連線） |
+| `firmware/` | R4 端的 tethered 韌體（Arduino），燒錄方式見 [firmware/README.md](firmware/README.md) |
+| `src/examples/` | 開新專案時可選的範例 |
 | `src/blocks/icon/` | 橫式 renderer、拖放提示、點選選擇器、Icon 積木定義 |
 | `src/blocks/word/` | Word 積木定義與工具箱 |
 | `src/blocks/setup.ts` | Blockly 主題、工具箱、兩種模式的工作區設定 |
 | `src/simulator/` | 右側虛擬 R4 面板 |
-| `src/project/` | `.mbng` 檔案格式、IndexedDB 自動儲存、匯出 / 匯入 |
+| `src/project/` | `.mbng` 檔案格式、專案庫（IndexedDB）、匯出 / 匯入 |
 | `src/i18n/` | 繁中 / 英文字串（介面與積木） |
 
 ## 新增一顆積木

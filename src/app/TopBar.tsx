@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useApp } from './store';
 import { setLanguage } from '../i18n';
 import { LANGUAGES, type Lang } from '../i18n/strings';
+import { bluetoothAvailable } from '../devices/ble/webBluetooth';
 
 interface Props {
   onHome(): void;
@@ -11,16 +12,19 @@ interface Props {
   onSettings(): void;
   onUndo(): void;
   onRedo(): void;
+  onConnect(): void;
   onRun(): void;
   onStop(): void;
 }
 
-export function TopBar({ onHome, onNew, onOpen, onSave, onSettings, onUndo, onRedo, onRun, onStop }: Props) {
+export function TopBar({ onHome, onNew, onOpen, onSave, onSettings, onUndo, onRedo, onConnect, onRun, onStop }: Props) {
   const { t, i18n } = useTranslation();
   const project = useApp((s) => s.project);
   const running = useApp((s) => s.running);
   const rename = useApp((s) => s.rename);
   const history = useApp((s) => s.history);
+  const connection = useApp((s) => s.connection);
+  const canBluetooth = bluetoothAvailable();
 
   const action = (key: string, onClick: () => void, disabled: boolean, icon: React.ReactNode) => (
     <button type="button" onClick={onClick} disabled={disabled} title={t(`ui.${key}`)} aria-label={t(`ui.${key}`)}>
@@ -77,9 +81,27 @@ export function TopBar({ onHome, onNew, onOpen, onSave, onSettings, onUndo, onRe
         ))}
       </select>
 
-      <button type="button" className="connect" disabled title={t('ui.connectSoon')}>
+      <button
+        type="button"
+        className={`connect ${connection.status}`}
+        onClick={onConnect}
+        disabled={!canBluetooth || connection.status === 'connecting'}
+        title={
+          !canBluetooth
+            ? t('ui.noBluetooth')
+            : connection.status === 'connected'
+              ? `${t('ui.disconnect')} ${connection.name ?? ''}`
+              : t('ui.connectHint')
+        }
+      >
         <svg viewBox="0 0 24 24" aria-hidden><path d="M7 7l10 10-5 5V2l5 5L7 17" /></svg>
-        <span className="label">{t('ui.connect')}</span>
+        <span className="label">
+          {connection.status === 'connected'
+            ? connection.name
+            : connection.status === 'connecting'
+              ? t('ui.connecting')
+              : t('ui.connect')}
+        </span>
       </button>
 
       <div className="run-controls">

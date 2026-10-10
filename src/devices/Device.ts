@@ -50,5 +50,29 @@ export interface Device {
   halt(): void;
 }
 
+/** What the simulator panel shows about a board (simulated or real). */
+export interface BoardSnapshot {
+  motors: Record<MotorPort, { speed: number; angle: number }>;
+  servos: Record<ServoPort, number>;
+  leds: [LedColor, LedColor];
+  /** MIDI note currently sounding, or null. */
+  note: number | null;
+  sensors: {
+    color: SensorColor;
+    distance: number;
+    tilt: Record<TiltAxis, number>;
+    buttons: Record<ButtonId, boolean>;
+  };
+  /** Real boards only: what each I2C port reports, and battery percent. */
+  ports?: { kind: 'none' | 'color' | 'distance'; color?: SensorColor; cm?: number }[];
+  battery?: number;
+}
+
+/** A device the UI can watch. */
+export interface ObservableDevice extends Device {
+  subscribe(cb: () => void): () => void;
+  snapshot(): BoardSnapshot;
+}
+
 /** Degrees per second a motor turns at 100% speed. */
 export const MAX_DEG_PER_SEC = 720;

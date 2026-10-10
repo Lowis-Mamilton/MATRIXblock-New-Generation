@@ -114,10 +114,13 @@ button, input, select { font: inherit; color: inherit; }
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px dashed rgba(255, 255, 255, 0.4);
-  opacity: 0.7;
-  cursor: not-allowed;
+  border: 1px solid rgba(255, 255, 255, 0.45) !important;
 }
+.connect:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); }
+.connect:disabled { opacity: 0.5; cursor: not-allowed; }
+.connect.connecting { opacity: 0.8; cursor: progress; }
+.connect.connected { background: var(--sky); color: var(--navy-ink); border-color: var(--sky) !important; }
+.connect.connected:hover { background: #9fdcf5; }
 .connect svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
 
 /* The physical-feeling run controls: chunky buttons with a pressed depth. */
@@ -199,6 +202,14 @@ button, input, select { font: inherit; color: inherit; }
   font-weight: 700;
   color: var(--navy);
 }
+.sim-mode.live { background: var(--sky); border-color: var(--sky); color: var(--navy-ink); }
+.sim-battery { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--navy); }
+.live-readings { margin: 0; display: grid; gap: 8px; font-size: 13px; }
+.live-readings > div { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 6px; border-bottom: 1px solid var(--paper); }
+.live-readings dt { font-weight: 700; color: var(--navy); }
+.live-readings dd { margin: 0; display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.live-readings .dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid var(--mist); }
+.live-readings .muted { color: #8a93ad; }
 .sim-hint { margin: 0; font-size: 12px; color: #5b6480; line-height: 1.5; }
 
 /* The board: product render with live overlays positioned in % of the image. */

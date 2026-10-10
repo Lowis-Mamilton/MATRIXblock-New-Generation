@@ -13,6 +13,8 @@ interface AppState {
   running: boolean;
   simOpen: boolean;
   history: { canUndo: boolean; canRedo: boolean };
+  /** BLE board connection. */
+  connection: { status: 'idle' | 'connecting' | 'connected'; name?: string; firmware?: string };
   message: { kind: 'error' | 'info'; text: string } | null;
 
   openProject(id: string, p: ProjectFile): void;
@@ -23,6 +25,7 @@ interface AppState {
   setSensors(sensors: SensorConfig): void;
   setRunning(running: boolean): void;
   setHistory(history: { canUndo: boolean; canRedo: boolean }): void;
+  setConnection(connection: AppState['connection']): void;
   toggleSim(): void;
   showMessage(kind: 'error' | 'info', text: string): void;
   clearMessage(): void;
@@ -40,6 +43,7 @@ export const useApp = create<AppState>((set, get) => {
     running: false,
     simOpen: true,
     history: { canUndo: false, canRedo: false },
+    connection: { status: 'idle' },
     message: null,
 
     openProject: (projectId, project) => {
@@ -56,6 +60,7 @@ export const useApp = create<AppState>((set, get) => {
     setSensors: (sensors) => patch({ sensors }),
     setRunning: (running) => set({ running }),
     setHistory: (history) => set({ history }),
+    setConnection: (connection) => set({ connection }),
     toggleSim: () => set({ simOpen: !get().simOpen }),
     showMessage: (kind, text) => set({ message: { kind, text } }),
     clearMessage: () => set({ message: null }),

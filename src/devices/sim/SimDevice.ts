@@ -1,4 +1,4 @@
-import type { Device } from '../Device';
+import type { BoardSnapshot, ObservableDevice } from '../Device';
 import { MAX_DEG_PER_SEC } from '../Device';
 import { sleep } from '../../runtime/sleep';
 import {
@@ -31,14 +31,7 @@ export type SensorPatch = Partial<Pick<SimSensors, 'color' | 'distance'>> & {
   buttons?: Partial<SimSensors['buttons']>;
 };
 
-export interface SimSnapshot {
-  motors: Record<MotorPort, { speed: number; angle: number }>;
-  servos: Record<ServoPort, number>;
-  leds: [LedColor, LedColor];
-  /** MIDI note currently sounding, or null. */
-  note: number | null;
-  sensors: SimSensors;
-}
+export type SimSnapshot = BoardSnapshot;
 
 interface Motor {
   speed: number;
@@ -54,7 +47,7 @@ const record = <K extends string, V>(keys: readonly K[], make: () => V) =>
  * A virtual MATRIX Mini R4. Motor angles integrate speed over wall-clock time;
  * sensors are whatever the simulator panel sets them to.
  */
-export class SimDevice implements Device {
+export class SimDevice implements ObservableDevice {
   private motors = record(MOTOR_PORTS, (): Motor => ({ speed: 0, angle: 0, since: Date.now() }));
   private servos = record(SERVO_PORTS, () => 90);
   private leds: [LedColor, LedColor] = ['off', 'off'];
