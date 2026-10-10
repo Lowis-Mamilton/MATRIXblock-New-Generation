@@ -88,5 +88,5 @@ Blockly workspace ──compile──► IR (JSON 指令樹) ──► Interpret
 - 模擬器外觀改用 MATRIX Mini R4 控制器的實物圖，數值疊在對應的埠位置上
 
 ### 部署
-- 個人 GitHub 帳號 `Lowis-Mamilton`，公開 repo `matrixblock-ng`，GitHub Pages；完成後再合併到公司官網
+- 個人 GitHub 帳號 `Lowis-Mamilton`，公開 repo `MATRIXblock-New-Generation`，GitHub Pages（https://lowis-mamilton.github.io/MATRIXblock-New-Generation/）；完成後再合併到公司官網
 
