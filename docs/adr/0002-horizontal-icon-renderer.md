@@ -1,16 +1,16 @@
-# ADR 0002：Icon Block 橫式 renderer
+# ADR 0002: Horizontal renderer for Icon blocks
 
-**狀態**：採用（2026-10-09，spike 驗證通過）
+**Status**: Accepted (2026-10-09, validated by a spike)
 
-## 背景
-Blockly 的內建 renderer 都假設敘述積木由上往下堆疊。Icon 模式需要由左往右接。
+## Context
+Every built-in Blockly renderer stacks statement blocks top to bottom. Icon blocks must chain left to right.
 
-## 決策
-- `IconRenderer` 覆寫 `Renderer.render()`，整個接管排版：自己量欄位、畫外框，把 previous / next / statement connection 放在左右邊緣。Blockly 的連線系統會依 connection offset 自動把積木橫向排好。
-- 所有積木共用一條「連線基準線」（左右連線的 y）。一般積木掛在線下；迴圈積木做成拱形（頭、上臂、尾蓋），內部鏈從頭部右側開始，往上高出 `ARM + 內部 ascent`。
-- 積木 mixin 覆寫 `getHeightWidth()`，回傳橫向鏈的尺寸，供工作區邊界、flyout 排版使用。
-- 用自訂 `IconConnectionPreviewer` 取代內建的 insertion marker（後者會把後續積木往下推）。拖曳時改在吸附點顯示一條發光直線。
+## Decision
+- `IconRenderer` overrides `Renderer.render()` and does the whole layout itself: it measures fields, draws the outline, and places the previous / next / statement connections on the left and right edges. Blockly's own connection logic then chains blocks sideways from those offsets.
+- All blocks share one **connection line** (the y of their left / right connections). Plain blocks hang below it; loops are arches (head, top arm, end cap) whose inner chain starts at the head's right edge, rising above the line by `ARM` plus the inner chain's ascent.
+- A block mixin overrides `getHeightWidth()` to report the horizontal chain's size, used for workspace bounds and flyout layout.
+- A custom `IconConnectionPreviewer` replaces Blockly's insertion marker, which pushes following blocks *down*. While dragging, a glowing vertical bar marks where the block will snap.
 
-## 後果
-- 依賴 Blockly 的 `Renderer.render`、`BlockSvg.width/height/childlessWidth`、`RenderedConnection.setOffsetInBlock`、`pathObject.addConnectionHighlight` 等介面；升級 Blockly 大版本時要回歸測試 Icon 模式。
-- Icon 積木只能用欄位（field），不支援 value input。
+## Consequences
+- Depends on Blockly internals: `Renderer.render`, `BlockSvg.width/height/childlessWidth`, `RenderedConnection.setOffsetInBlock`, `pathObject.addConnectionHighlight`. Re-test Icon mode after every major Blockly upgrade.
+- Icon blocks use fields only; they cannot have value inputs.

@@ -1,16 +1,16 @@
-# ADR 0001：Tethered 執行 + IR + 瀏覽器端直譯器
+# ADR 0001: Tethered execution with an IR and an in-browser interpreter
 
-**狀態**：採用（2026-10-09）
+**Status**: Accepted (2026-10-09)
 
-## 背景
-舊版 MATRIXblock 把積木轉成 Arduino C++，再用 arduino-cli 編譯燒錄。這需要安裝工具鏈、編譯慢，也做不到「按 ▶ 立即執行、積木即時高亮」。
+## Context
+The previous MATRIXblock turned blocks into Arduino C++ and flashed them with arduino-cli. That needs a toolchain on every computer, compiles slowly, and cannot give "press ▶ and it runs now" with the running block highlighted.
 
-## 決策
-- 積木先編譯成平台無關的 **IR**（JSON 指令樹，每個節點帶 `blockId`）。Icon 與 Word 兩種模式各自編譯到同一份 IR。
-- 由瀏覽器端的**非同步直譯器**執行 IR，支援多線程（多個事件積木）、停止、積木高亮。
-- 直譯器只透過 **Device 介面**操作硬體。階段一實作 `SimDevice`（模擬器），階段二實作 `BleR4Device`（Web Bluetooth + R4 端直譯韌體）。
+## Decision
+- Blocks compile to a platform-neutral **IR** (a JSON command tree; every node carries its `blockId`). Icon and Word blocks compile to the same IR.
+- An **async interpreter** in the browser runs the IR: several threads (one per hat block), stop, and block highlighting.
+- The interpreter touches hardware only through the **Device interface**: `SimDevice` (simulator) and `BleR4Device` (Web Bluetooth + R4 firmware).
 
-## 後果
-- 板子必須保持連線才能執行（與 LEGO SPIKE / Coding Canvas 相同）。
-- R4 需要一支新的直譯韌體與指令協定（階段二）。
-- 積木、IR、直譯器可以完全不碰硬體就做單元測試。
+## Consequences
+- The board must stay connected while a program runs, as with LEGO SPIKE and Coding Canvas.
+- The R4 needs its own firmware and command protocol (ADR 0003).
+- Blocks, IR and interpreter are unit-testable without hardware.

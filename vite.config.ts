@@ -13,7 +13,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['logo.png', 'logo-white.png'],
+      includeAssets: ['logo-white.png'],
       manifest: {
         name: 'MATRIXblock',
         short_name: 'MATRIXblock',

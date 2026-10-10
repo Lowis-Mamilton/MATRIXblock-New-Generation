@@ -1,70 +1,73 @@
-# ADR 0003：網頁 ↔ R4 的 BLE 協定
+# ADR 0003: Web ↔ R4 BLE protocol
 
-**狀態**：採用（2026-10-10）
+**Status**: Accepted (2026-10-10), verified on hardware
 
-## 背景
-Tethered 模式下，網頁的直譯器透過 BLE 即時控制 MATRIX Mini R4，板子回傳感測器數值。
+## Context
+In tethered mode the web interpreter drives a MATRIX Mini R4 live over BLE and the board streams sensor values back.
 
-R4 的硬體分工：
-- RA4M1 跑 Arduino 程式和 ArduinoBLE 主機端
-- ESP32-S3 是 BLE 控制器
-- STM32 負責馬達、編碼器、伺服、IMU、按鈕，RA4M1 透過 57600 baud 序列埠呼叫它
+How the R4 divides the work:
+- **RA4M1** runs the Arduino sketch and the ArduinoBLE host stack.
+- **ESP32-S3** is the BLE controller (and the USB bridge). The RA4M1 talks to it with AT commands over a 115200-baud UART.
+- **STM32** owns motors, encoders, servos, IMU and buttons. The RA4M1 calls it over a 57600-baud software serial link; each call takes about 5 ms.
 
-舊版 MATRIXblock 已用過 Nordic UART Service（NUS）。
+The old MATRIXblock already used the Nordic UART Service (NUS).
 
-## 決策
+## Decision
 
-### 傳輸
-- 使用 NUS：服務 `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`
-  - RX `…0002`：網頁寫入，Write / Write Without Response
-  - TX `…0003`：板子 Notify
-- **一個 BLE 封包就是一個 frame，最多 20 bytes**，不依賴 MTU 協商
-- Frame 格式：`[type:u8][seq:u8][payload…]`，多位元組數值一律 little-endian
-- 板子廣播名稱 `MXR4-XXXX`（MAC 末 4 碼）；網頁用 `namePrefix: 'MXR4-'` 篩選
+### Transport
+- NUS service `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`:
+  - RX `…0002`: written by the web app (Write / Write Without Response)
+  - TX `…0003`: notified by the board
+- **One frame per BLE packet, at most 20 bytes**, so no MTU negotiation is needed.
+- Frame: `[type:u8][seq:u8][payload…]`, little-endian.
+- Boards advertise as `MXR4-XXXX` (last 4 hex digits of the address); the web app filters on `namePrefix: 'MXR4-'`.
 
-### 網頁 → 板子（指令）
-| type | 名稱 | payload | 回覆 |
+### Web → board (commands)
+| type | name | payload | reply |
 |---|---|---|---|
 | 0x01 | HELLO | — | INFO |
 | 0x02 | HEARTBEAT | — | — |
 | 0x10 | MOTOR_RUN | port u8, speed i8 | — |
-| 0x11 | MOTOR_RUN_DEG | port u8, speed i8, degrees u32 | DONE（轉完時） |
-| 0x13 | MOTOR_STOP | port u8, mode u8（0 煞車 / 1 滑行） | — |
+| 0x11 | MOTOR_RUN_DEG | port u8, speed i8, degrees u32 | DONE when finished |
+| 0x13 | MOTOR_STOP | port u8, mode u8 (0 brake / 1 coast) | — |
 | 0x14 | MOTOR_RESET | port u8 | — |
 | 0x20 | SERVO | port u8, angle u8 | — |
-| 0x21 | LED | which u8（1 / 2 / 3=全部）, r u8, g u8, b u8 | — |
+| 0x21 | LED | which u8 (1 / 2 / 3 = both), r u8, g u8, b u8 | — |
 | 0x22 | TONE | freq u16, ms u16 | — |
 | 0x23 | NO_TONE | — | — |
 | 0x2F | HALT | — | — |
 
-說明：
-- 以秒計時的動作由網頁端計時：先送 RUN，時間到再送 STOP。
-- 以角度 / 圈數計的動作交給韌體的 `rotateFor`，轉完回 DONE。
-- 多顆馬達同時轉角度時，各馬達的角度依速度比例分配，讓它們同時完成。
-- port 編號：馬達 1–4、伺服 1–4、I2C 1–4。
+- Moves measured in seconds are timed by the web app: RUN, then STOP when the time is up.
+- Moves measured in degrees / rotations run on the board (`rotateFor`) and end with DONE. When several motors move together, the degrees are shared out by speed so they finish together.
+- A degree move that never ends (unplugged or stalled motor) is abandoned after 2 × the expected time + 1.5 s: the board brakes and sends DONE.
+- Port numbers: motors 1–4, servos 1–4, I2C 1–4.
 
-### 板子 → 網頁
-| type | 名稱 | payload |
+### Board → web
+| type | name | payload |
 |---|---|---|
-| 0x80 | T_MOTORS | 4 × 編碼器角度 i32, busy mask u8, buttons u8（bit0 上, bit1 下） |
-| 0x81 | T_IMU | pitch, roll, yaw i16（單位 0.01°）, battery % u8 |
-| 0x82 | T_PORTS | 4 × (kind u8, value u16)，kind：0 無 / 1 顏色（value=顏色代碼）/ 2 距離（value=mm） |
-| 0x90 | DONE | 對應指令的 seq u8 |
-| 0x91 | INFO | 協定版本 u8, 韌體版本 major/minor/patch u8 |
+| 0x80 | T_MOTORS | 4 × encoder degrees i32, busy mask u8, buttons u8 (bit0 up, bit1 down) |
+| 0x81 | T_IMU | pitch, roll, yaw i16 (0.01°), battery % u8 |
+| 0x82 | T_PORTS | 4 × (kind u8, value u16); kind 0 none / 1 colour (value = colour code) / 2 distance (value = mm) |
+| 0x90 | DONE | seq u8 of the finished command |
+| 0x91 | INFO | protocol version u8, firmware version major / minor / patch u8 |
 
-- 回報頻率：T_MOTORS、T_IMU、T_PORTS 各每秒 20 次。
-- I2C 埠上接了什麼感測器，由韌體每 2 秒掃描一次自動偵測，支援熱插拔。
-- 顏色代碼：0 無、1 黑、2 白、3 紅、4 黃、5 綠、6 藍（與 IR 的 `SENSOR_COLORS` 順序一致）。
+- T_MOTORS every 50 ms, T_IMU every 100 ms, T_PORTS every 200 ms. STM32 values are read one per loop pass, round robin, so `BLE.poll()` stays responsive.
+- The firmware probes I2C1–I2C4 every 2 s and detects plugged / unplugged sensors.
+- Colour codes: 0 none, 1 black, 2 white, 3 red, 4 yellow, 5 green, 6 blue (the order of `SENSOR_COLORS` in the IR).
 
-### 安全
-- 斷線時，板子立刻停下所有馬達、關掉蜂鳴器。
-- 看門狗：網頁每 300 ms 送一次 HEARTBEAT；板子超過 2500 ms 沒收到任何 frame 就停車。
-  - Chrome 會把背景或被遮住分頁的計時器降到約每秒一次（實機測試時看門狗每 2～3 秒誤觸發一次），所以網頁每收到一個遙測封包也會檢查並補送心跳。
+### Safety
+- When the link drops, the board stops every motor and the buzzer.
+- Watchdog: the web app sends HEARTBEAT every 300 ms; the board halts after 2500 ms without any frame.
+  - Chrome throttles timers in background or occluded tabs to about once a second. On real hardware this tripped a 1 s watchdog every 2–3 s, so the web app also sends a heartbeat whenever telemetry arrives and its last frame is ≥ 300 ms old (Bluetooth events are not throttled).
 
-### 版本
-- `PROTOCOL_VERSION = 1`。網頁連線後先送 HELLO，INFO 的協定版本不符就提示「請更新韌體」，並且不執行程式。
+### Versioning
+- `PROTOCOL_VERSION = 1`, defined in both `firmware/MatrixblockLink/MatrixblockLink.ino` and `src/devices/ble/protocol.ts`. The app sends HELLO on connect; if INFO reports a different protocol it disconnects and asks for a firmware update.
 
-## 後果
-- 感測器數值是快取的最新回報值，最多延遲約 50 ms；網頁端讀取不需等待，與 `Device` 介面的同步讀取一致。
-- 每個 frame 都在 20 bytes 以內，任何 MTU 都能用。
-- 與 BLE Bootloader（ESP32 端 DFU）共用同一個藍牙控制器；兩者的切換機制留待 DFU 完成後再整合。
+### Hardware findings
+- With STM32 firmware 6.00, `GetButtonsState` (both buttons at once) always fails, and its timeouts corrupted the reads after it. The firmware reads each button with `GetButtonState`.
+- A TT motor turns about 7.6°/s per 1 % speed (≈ 760°/s at 100 %); the simulator uses the same figure.
+
+## Consequences
+- Sensor values are the latest telemetry, up to ~50–200 ms old; reads never wait, matching the synchronous reads of the `Device` interface.
+- Every frame fits in 20 bytes, so any MTU works.
+- Tethered mode and the planned BLE bootloader (DFU on the ESP32) share one BLE controller; switching between them is left for when DFU exists.

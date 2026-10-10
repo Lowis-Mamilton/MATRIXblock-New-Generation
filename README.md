@@ -1,44 +1,53 @@
 # MATRIXblock New Generation
 
-MATRIX Mini R4 的網頁版圖形化程式環境（PWA），有兩種積木模式：
+A web-based graphical programming environment (PWA) for the **MATRIX Mini R4** robot controller, with two block styles:
 
-- **圖示積木（Icon）**：由左往右接的圖示積木，參數用點選的選擇器挑，適合低年級。
-- **文字積木（Word）**：由上往下堆疊的文字積木，有變數、條件、運算，適合中高年級。
+- **Icon blocks** — picture blocks that snap left to right; every value is picked from a grid. For beginners and younger students.
+- **Word blocks** — text blocks that stack top to bottom, with variables, conditions and maths. For older students.
 
-規格與決策見 [docs/SPEC.md](docs/SPEC.md)；架構決策見 [docs/adr](docs/adr)。
+Programs run live from the browser: on a built-in simulator, or on a real R4 connected over Bluetooth.
 
-## 開發
+**Live app:** https://lowis-mamilton.github.io/MATRIXblock-New-Generation/
+
+## Documentation
+
+- [docs/SPEC.md](docs/SPEC.md) — what the product does and why
+- [docs/adr/](docs/adr) — architecture decisions (tethered IR interpreter, horizontal Icon renderer, BLE protocol)
+- [firmware/README.md](firmware/README.md) — setting up a new R4 board and flashing the firmware
+
+## Development
 
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # Vitest：IR 編譯、直譯器、BLE 協定、專案庫、範例、字串
+npm test           # Vitest
 npm run typecheck
-npm run build      # 輸出到 dist/（含 Service Worker）
+npm run build      # dist/, including the service worker
 ```
 
-推到 `main` 後，`.github/workflows/deploy.yml` 會測試、建置並部署到 GitHub Pages
-（repo 設定 → Pages → Source 選 **GitHub Actions**）。
+Pushing to `main` runs `.github/workflows/deploy.yml`, which tests, builds and deploys to GitHub Pages.
 
-## 程式結構
+## Project layout
 
-| 路徑 | 內容 |
+| Path | Contents |
 |---|---|
-| `src/ir/` | 中介表示（IR）型別與編譯器（Blockly 存檔 JSON → IR，Icon / Word 共用） |
-| `src/runtime/` | 非同步直譯器：多線程、停止、等待條件、廣播、積木高亮 |
-| `src/devices/` | `Device` 介面；`sim/SimDevice` 是虛擬 R4，`ble/` 是藍牙實機（協定、BleR4Device、Web Bluetooth 連線） |
-| `firmware/` | R4 端的 tethered 韌體（Arduino），燒錄方式見 [firmware/README.md](firmware/README.md) |
-| `src/examples/` | 開新專案時可選的範例 |
-| `src/blocks/icon/` | 橫式 renderer、拖放提示、點選選擇器、Icon 積木定義 |
-| `src/blocks/word/` | Word 積木定義與工具箱 |
-| `src/blocks/setup.ts` | Blockly 主題、工具箱、兩種模式的工作區設定 |
-| `src/simulator/` | 右側虛擬 R4 面板 |
-| `src/project/` | `.mbng` 檔案格式、專案庫（IndexedDB）、匯出 / 匯入 |
-| `src/i18n/` | 繁中 / 英文字串（介面與積木） |
+| `src/ir/` | IR types and the compiler (Blockly JSON → IR, shared by both block modes) |
+| `src/runtime/` | Async interpreter: threads, stop, wait-until, broadcast, block highlighting |
+| `src/devices/` | `Device` interface; `sim/` virtual R4; `ble/` real R4 (protocol, `BleR4Device`, Web Bluetooth link) |
+| `src/blocks/icon/` | Horizontal renderer, drop previewer, tap-to-pick field, Icon block definitions |
+| `src/blocks/word/` | Word block definitions and toolbox |
+| `src/blocks/setup.ts` | Blockly theme, toolboxes and per-mode workspace options |
+| `src/app/` | React UI: top bar, editor host, project home, dialogs, app store, engine |
+| `src/simulator/` | Simulator panel drawn on the R4 product image |
+| `src/project/` | `.mbng` file format, project library (IndexedDB), import / export |
+| `src/examples/` | Starter projects offered when creating a project |
+| `src/i18n/` | All UI and block text (zh-TW, en) |
+| `firmware/` | R4 tethered firmware (Arduino) and PC-side hardware test tools |
+| `assets/` | Source artwork (logos, board image); `scripts/make_assets.py` regenerates the icons and board image in `public/` from it |
 
-## 新增一顆積木
+## Adding a block
 
-1. 在 `src/blocks/icon/blocks.ts` 或 `src/blocks/word/blocks.ts` 定義積木，並放進工具箱清單。
-2. 在 `src/i18n/strings.ts` 加上兩種語言的文字。
-3. 在 `src/ir/compile.ts` 的 `STATEMENTS` 或 `EXPRESSIONS` 表加上編譯規則；需要新動作時擴充 `src/ir/types.ts` 與直譯器。
-4. 在 `src/ir/compile.test.ts` 補測試。
+1. Define it in `src/blocks/icon/blocks.ts` or `src/blocks/word/blocks.ts` and add it to that toolbox list.
+2. Add its text and tooltip (`MB_TIP_<TYPE>`) in both languages in `src/i18n/strings.ts`.
+3. Add a compile rule to `STATEMENTS` / `EXPRESSIONS` in `src/ir/compile.ts`; for a new kind of action, extend `src/ir/types.ts`, the interpreter and both devices.
+4. Cover it in `src/ir/compile.test.ts`. `src/i18n/strings.test.ts` fails until the tooltip exists in every language.

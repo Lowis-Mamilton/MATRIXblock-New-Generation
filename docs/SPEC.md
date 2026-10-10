@@ -1,92 +1,79 @@
-# MATRIXblock New Generation — 規格
+# MATRIXblock New Generation — Specification
 
-全新設計的 MATRIX Mini R4 圖形化程式環境，參考 LEGO Education Coding Canvas 的 Icon / Word 兩種積木模式，只提供類似 EV3G 的精簡功能方塊。**不沿用舊版 MATRIXblock（Electron + Arduino 編譯燒錄）的架構。**
+A new graphical programming environment for the **MATRIX Mini R4** robot controller. It follows the two block styles of LEGO Education's Coding Canvas — horizontal **Icon blocks** and vertical **Word blocks** — and offers a deliberately small, EV3-G-like set of blocks rather than the whole hardware library.
 
-## 決策
-| # | 決策 |
+It is a ground-up rewrite. The previous MATRIXblock (Electron, blocks → Arduino C++ → compile and flash) is not reused; this one runs programs live from the browser (tethered mode).
+
+## Product decisions
+
+| Topic | Decision |
 |---|---|
-| 硬體 | MATRIX Mini R4（DC 馬達有編碼器） |
-| 執行 | Tethered：程式在瀏覽器跑，對板子下即時指令（第二階段需 R4 直譯韌體） |
-| 平台 | 網頁 + PWA，以 Chrome 為主（Win / Chromebook / Android；Apple 裝置也用 Chrome）；部署 GitHub Pages |
-| 技術 | Vite + TypeScript + React + Blockly v11+（自訂 renderer 做橫式） |
-| 模式 | Icon（橫式左→右，低年級，調色盤在底部）／Word（直式上→下，中高年級，左側分類），開專案時選定，不互轉 |
-| 語言 | i18n 架構，先做 zh-TW + en |
-| 模擬器 | 虛擬 R4 狀態面板（馬達轉速/角度、伺服角度、LED、蜂鳴器；感測器用滑桿調） |
-| 存檔 | IndexedDB 自動存 + 匯出/匯入 `.mbng`（JSON），無帳號 |
-| 視覺 | 自訂品牌風、自繪 SVG icon；版面參考 LEGO 但不照抄 |
-| 品牌色 | 主 #2E5690、logo #195197、強調 #6EC9EF、次 #97ABC8、淺 #CBD5E3、深字 #1D1D36、淺底 #F2F1FF；字型 Montserrat / Poppins + Noto Sans TC |
-| 第二階段連線 | 僅 BLE（Web Bluetooth） |
-| 階段一範圍 | 編輯器 + 模擬執行；硬體連線與韌體留到階段二 |
+| Hardware | MATRIX Mini R4 (DC motors with encoders) |
+| Execution | Tethered: the program runs in the browser and drives the board live over BLE |
+| Platform | Web app + PWA, Chrome / Edge first (Windows, Chromebook, Android; Apple users install Chrome) |
+| Stack | Vite + TypeScript + React + Blockly, custom renderer for horizontal Icon blocks |
+| Block modes | Icon (left → right, younger students, palette along the bottom) and Word (top → bottom, older students, categories on the left). Chosen when a project is created; projects never convert between modes |
+| Languages | i18n framework; Traditional Chinese (zh-TW) and English |
+| Simulator | Virtual R4 drawn on the product image: motor speed/angle, servo angle, 2 LEDs, buzzer, OLED, up/down buttons; sensors set with controls |
+| Storage | Projects in IndexedDB ("My projects"), plus `.mbng` (JSON) import / export. No accounts |
+| Look | MATRIX brand palette and logo, own SVG icons. Layout inspired by LEGO, not copied |
+| Brand colours | Primary `#2E5690`, logo `#195197`, accent `#6EC9EF`, secondary `#97ABC8`, light `#CBD5E3`, ink `#1D1D36`, light background `#F2F1FF`. Fonts: Montserrat + Noto Sans TC |
+| Connection | BLE only (Web Bluetooth) |
+| Hosting | GitHub Pages, personal account `Lowis-Mamilton`, repo `MATRIXblock-New-Generation` (https://lowis-mamilton.github.io/MATRIXblock-New-Generation/); to be merged into the company website later |
 
-### Icon Block 清單（約 12 顆，數值全用彈出選擇器、限制範圍：秒 1–10、速度 慢/中/快、重複 1–10）
-- 事件：▶ 開始時、板載按鈕按下時
-- 移動：小車 前進/後退/左轉/右轉（N 秒）、停止（左右輪埠於設定面板，預設 M1 左 / M2 右）
-- 馬達：單顆馬達轉（埠、方向、N 秒）、伺服轉到角度
-- 等待：等 N 秒、等到感測器條件（按鈕 / 顏色 / 距離近）
-- 流程：重複 N 次、永遠重複
-- 燈聲：LED 設色、蜂鳴器音符/音效
+## Blocks
 
-### Word Block 清單（Icon 全部 + 以下）
-- 移動：轉向移動、坦克移動（秒/圈/度）
-- 馬達：開始轉、轉 N 度/圈、停止（煞車/滑行）、讀角度
-- 控制：如果/否則、等到〈條件〉、重複直到、停止全部
-- 感測：顏色、距離、IMU 傾斜、按鈕
-- 運算：四則、比較、且/或/非、隨機；變數：建立/設定/改變
-- 事件：開始、按鈕、廣播/收到訊息（多線程）
-- 不做：清單、My Blocks、OLED、搖桿、HuskyLens、M-Vision
+### Icon blocks (horizontal)
+Every parameter is chosen from a tap-to-pick grid with a small fixed range: seconds 1–10, speed slow / medium / fast, repeat 1–10.
 
-### 第一階段周邊
-輸出：DC M1–M4、伺服 RC1–RC4、RGB LED、蜂鳴器；輸入：按鈕、M-Color、M-Laser、IMU。
+- **Events**: ▶ start; up button pressed; down button pressed
+- **Movement**: drive forward / backward / left / right for N seconds; stop. Wheel ports come from Settings (default M1 left, M2 right)
+- **Motors**: one motor for N seconds (port, direction, speed); servo to an angle
+- **Control**: wait N seconds; repeat N times; forever
+- **Sensors**: wait until (up / down button, object near, a colour)
+- **Light & sound**: LED colour (LED 1, LED 2 or both); play a note
 
-## 架構
+Icon sensor blocks read the colour / distance sensor on the I2C ports chosen in Settings (default colour I2C1, distance I2C2).
+
+### Word blocks (vertical)
+Everything Icon blocks can do, plus:
+
+- **Movement**: steering move and tank move, for seconds / rotations / degrees, or start-and-continue; stop (brake / coast)
+- **Motors**: run for an amount, start, stop, reset angle, read angle; servo
+- **Control**: if / if-else, wait until ⟨condition⟩, repeat until, stop all
+- **Sensors**: colour, "sees colour?", distance (each with an I2C port), tilt (pitch / roll / yaw), button (up / down)
+- **Operators**: arithmetic, comparison, and / or / not, random
+- **Variables**: create, set, change
+- **Events**: start, button, broadcast / when I receive (multiple threads)
+
+Out of scope: lists, My Blocks, OLED, joystick, HuskyLens, M-Vision, 2D driving-field simulation (deferred).
+
+### Hardware covered
+Outputs: DC motors M1–M4, servos RC1–RC4, two RGB LEDs, buzzer. Inputs: up / down buttons, IMU, colour sensor (MXColor / V3) and laser distance sensor (MXLaser / V2) on I2C1–I2C4. The firmware detects which sensor model is plugged into each port.
+
+## Architecture
 
 ```
-Blockly workspace ──compile──► IR (JSON 指令樹) ──► Interpreter (async, 多線程, 高亮, 停止)
-                                                         │
-                                                   Device 介面
-                                          ┌──────────────┴──────────────┐
-                                    SimDevice (階段一)            BleR4Device (階段二)
+Blockly workspace ──compile──► IR (JSON command tree) ──► Interpreter (async, threads, highlight, stop)
+                                                                │
+                                                          Device interface
+                                                ┌───────────────┴───────────────┐
+                                           SimDevice                        BleR4Device ── BLE ── R4 firmware
 ```
 
-詳見 [ADR 0001](adr/0001-tethered-ir-interpreter.md) 與 [ADR 0002](adr/0002-horizontal-icon-renderer.md)。
+- [ADR 0001](adr/0001-tethered-ir-interpreter.md) — tethered execution, IR and in-browser interpreter
+- [ADR 0002](adr/0002-horizontal-icon-renderer.md) — horizontal Icon block renderer
+- [ADR 0003](adr/0003-ble-protocol.md) — web ↔ R4 BLE protocol
 
-## 實作備註（與原計畫的差異）
-- 版本：Blockly 13、React 19、Vite 8、TypeScript 7（動工時的最新穩定版）。
-- Icon 與 Word 共用同一個 `src/ir/compile.ts`，直接編譯 Blockly 存檔 JSON（不依賴 DOM，方便測試）。
-- 狀態管理用 zustand；模擬器面板直接訂閱 `SimDevice`。
-- 程式結束時（所有線程跑完、且沒有「按鈕」事件積木）會停止所有馬達，與 LEGO SPIKE 的行為一致。
+## Behaviour notes
 
-## 第二輪：補完 + 階段二（2026-10-10 拷問結論）
+- When every thread has finished (and no button hat is waiting), the program ends and all motors stop, as on LEGO SPIKE.
+- Motors run closed-loop (`setSpeed`). Degree / rotation moves use the library's `rotateFor` on the board and finish with a DONE message; a move on a stalled or unplugged motor gives up after twice the expected time + 1.5 s.
+- Safety: the board stops every motor when the link drops or when the app is silent for 2.5 s.
+- Each board advertises as `MXR4-` + the last 4 hex digits of its address, shows that name on its OLED, and blinks both LEDs green when an app connects.
+- While a board is connected, ▶ runs on the board and the simulator panel switches to live readings; otherwise programs run on the simulator.
 
-### 第一階段補強
-- 復原 / 重做按鈕
-- 多專案管理：首頁「我的專案」清單（新增、開啟、改名、刪除），存在 IndexedDB
-- 範例專案 6 個，開新專案時可選：
-  - Icon：跳舞小車、遇到障礙物就停、紅燈停綠燈行
-  - Word：正方形路線、避障巡邏、按鈕計數器
-- Word 積木滑鼠提示（tooltip）
-- 觸控優化（平板拖拉、較大按鈕）
-- 延後：2D 小車場地；不做：OLED / 搖桿等更多周邊積木
+## Project tools
 
-### 硬體對應修正
-- R4 有 **2 顆 RGB LED**、**2 顆按鈕（上 / 下）**：
-  - Word：LED 積木可選 LED 1 / LED 2 / 全部；按鈕積木可選上 / 下
-  - Icon：LED 預設兩顆一起，選擇器可指定；按鈕事件分「上鍵」「下鍵」兩個積木
-  - 模擬器同步改成 2 顆 LED、2 顆按鈕
-- 顏色 / 雷射距離感測器接在 I2C1～I2C4：
-  - Word 感測器積木有埠下拉選單
-  - Icon 在「設定」指定（預設顏色 I2C1、雷射 I2C2）
-  - 型號版本（MXColor / V3、MXLaser / V2）由韌體自動偵測
-- 馬達一律用閉迴路 `setSpeed`；「轉 N 度」用函式庫的 `rotateFor`
-
-### 階段二：BLE 實機
-- 連線：只用 Web Bluetooth；協定見 [ADR 0003](adr/0003-ble-protocol.md)
-- 韌體：本 repo `firmware/`，RA4M1 上的 Arduino sketch（ArduinoBLE + MatrixMiniR4）；用 Arduino IDE / arduino-cli 燒錄，網頁偵測韌體版本並提示更新
-- 安全：斷線立即停車；看門狗 1 秒沒收到心跳就停車
-- 辨識：廣播名稱 `MXR4-` + MAC 末 4 碼；OLED 顯示名稱與連線狀態；連上時 LED 閃一下
-- 模擬器面板：連線後切成「實機模式」，即時顯示板子回傳的數值、感測器改唯讀；斷線回到模擬模式。按 ▶ 時有連線就跑實機
-- 模擬器外觀改用 MATRIX Mini R4 控制器的實物圖，數值疊在對應的埠位置上
-
-### 部署
-- 個人 GitHub 帳號 `Lowis-Mamilton`，公開 repo `MATRIXblock-New-Generation`，GitHub Pages（https://lowis-mamilton.github.io/MATRIXblock-New-Generation/）；完成後再合併到公司官網
-
+- Six starter examples (Icon: dancing robot, stop at obstacles, traffic light; Word: square route, patrol, button counter)
+- Undo / redo buttons, block tooltips in both modes, tablet-sized touch targets
