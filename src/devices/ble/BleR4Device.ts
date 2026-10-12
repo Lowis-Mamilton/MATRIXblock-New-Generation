@@ -6,6 +6,12 @@
  * degrees/rotations run on the board and finish with a DONE frame; timed
  * movements are timed here.
  *
+ * Programs often set motors from a sensor in a tight loop, far faster than
+ * BLE can carry writes (a few dozen per second). Frames therefore wait in an
+ * outbox with one write in flight: a newer motor / servo / LED command
+ * replaces a waiting one for the same output, and an unchanged command is not
+ * repeated within RESEND_MS, so the board always gets the latest state.
+ *
  * D ports read as digital inputs until a program asks one for an ultrasonic
  * distance; from then on the board measures with an ultrasonic sensor there.
  */
@@ -42,6 +48,8 @@ const HELLO_TIMEOUT_MS = 3000;
 const RESET_SETTLE_MS = 200;
 /** Distance reported when no distance sensor is plugged in (never "near"). */
 export const NO_DISTANCE_CM = 999;
+/** An unchanged motor / servo / LED command is sent again after this long. */
+export const RESEND_MS = 500;
 /** Battery reported before the board's first IMU telemetry. */
 const UNKNOWN_BATTERY = 100;
 
@@ -58,6 +66,11 @@ export class BleR4Device implements ObservableDevice {
   private infoWaiter: ((m: Extract<BoardMessage, { type: 'info' }>) => void) | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private lastSentAt = 0;
+  /** Frames waiting for the radio, oldest first; keyed frames replace older ones with the same key. */
+  private outbox = new Map<string | symbol, { frame: Uint8Array; dedupe: boolean }>();
+  private sending = false;
+  /** Last frame sent per key, to skip unchanged repeats. */
+  private lastSent = new Map<string, { sig: string; at: number }>();
   private listeners = new Set<() => void>();
   private buttonListeners = new Set<(b: ButtonId) => void>();
   private disconnectListeners = new Set<() => void>();
@@ -109,7 +122,7 @@ export class BleR4Device implements ObservableDevice {
         clearTimeout(timer);
         resolve(m);
       };
-      void this.send(encode.hello(this.nextSeq()));
+      this.send(encode.hello(this.nextSeq()));
     });
     this.firmware = info.firmware;
     if (info.protocol !== PROTOCOL_VERSION) throw new FirmwareMismatch(info.firmware, info.protocol);
@@ -148,7 +161,7 @@ export class BleR4Device implements ObservableDevice {
 
   motorRun(port: MotorPort, speed: number) {
     this.state.motors[port].speed = speed;
-    void this.send(encode.motorRun(this.nextSeq(), port, speed));
+    this.send(encode.motorRun(this.nextSeq(), port, speed), `motor:${port}`);
     this.changed();
   }
 
@@ -190,7 +203,7 @@ export class BleR4Device implements ObservableDevice {
 
   motorStop(port: MotorPort, mode: StopMode) {
     this.state.motors[port].speed = 0;
-    void this.send(encode.motorStop(this.nextSeq(), port, mode));
+    this.send(encode.motorStop(this.nextSeq(), port, mode), `motor:${port}`);
     this.changed();
   }
 
@@ -201,31 +214,33 @@ export class BleR4Device implements ObservableDevice {
   motorResetAngle(port: MotorPort) {
     this.state.motors[port].angle = 0;
     this.resetAt[port] = Date.now();
-    void this.send(encode.motorReset(this.nextSeq(), port));
+    this.send(encode.motorReset(this.nextSeq(), port));
     this.changed();
   }
 
   servoSet(port: ServoPort, angle: number) {
     this.state.servos[port] = Math.max(0, Math.min(180, angle));
-    void this.send(encode.servo(this.nextSeq(), port, angle));
+    this.send(encode.servo(this.nextSeq(), port, angle), `servo:${port}`);
     this.changed();
   }
 
   ledSet(target: LedTarget, color: LedColor) {
     if (target !== '2') this.state.leds[0] = color;
     if (target !== '1') this.state.leds[1] = color;
-    void this.send(encode.led(this.nextSeq(), target, color));
+    // `both` and one LED overlap, so a change to either makes the others' last state unknown.
+    for (const t of ['both', '1', '2']) if (t !== target) this.lastSent.delete(`led:${t}`);
+    this.send(encode.led(this.nextSeq(), target, color), `led:${target}`);
     this.changed();
   }
 
   async beep(note: number, secs: number, signal: AbortSignal) {
     this.state.note = note;
     this.changed();
-    void this.send(encode.tone(this.nextSeq(), midiToHz(note), secs * 1000));
+    this.send(encode.tone(this.nextSeq(), midiToHz(note), secs * 1000));
     try {
       await sleep(secs * 1000, signal);
     } catch (e) {
-      void this.send(encode.noTone(this.nextSeq()));
+      this.send(encode.noTone(this.nextSeq()));
       throw e;
     } finally {
       this.state.note = null;
@@ -284,7 +299,8 @@ export class BleR4Device implements ObservableDevice {
     this.state.note = null;
     for (const resolve of this.done.values()) resolve();
     this.done.clear();
-    void this.send(encode.halt(this.nextSeq()));
+    this.forget('motor:');
+    this.send(encode.halt(this.nextSeq()));
     this.changed();
   }
 
@@ -298,7 +314,7 @@ export class BleR4Device implements ObservableDevice {
   private useUltrasonic(port: DigitalPort, on: boolean) {
     if (this.ultrasonicPorts.includes(port) === on) return;
     this.ultrasonicPorts = on ? [...this.ultrasonicPorts, port] : this.ultrasonicPorts.filter((p) => p !== port);
-    void this.send(encode.ioMode(this.nextSeq(), this.ultrasonicPorts));
+    this.send(encode.ioMode(this.nextSeq(), this.ultrasonicPorts), 'io');
   }
 
   private nextSeq() {
@@ -307,22 +323,59 @@ export class BleR4Device implements ObservableDevice {
   }
 
   private keepAlive() {
-    if (this.heartbeat && Date.now() - this.lastSentAt >= HEARTBEAT_MS) void this.send(encode.heartbeat(0));
+    if (this.heartbeat && Date.now() - this.lastSentAt >= HEARTBEAT_MS) this.send(encode.heartbeat(0), 'heartbeat', false);
   }
 
-  private send(frame: Uint8Array) {
+  /**
+   * Queue a frame. With a `key`, it replaces a waiting frame with the same key
+   * and (if `dedupe`) is dropped when the last one sent for that key was the
+   * same command less than RESEND_MS ago.
+   */
+  private send(frame: Uint8Array, key?: string, dedupe = true) {
     this.lastSentAt = Date.now();
-    return this.link.send(frame).catch(() => {
-      /* a lost frame surfaces as a disconnect */
-    });
+    if (key) {
+      const last = this.lastSent.get(key);
+      const unchanged = dedupe && last?.sig === signature(frame) && Date.now() - last.at < RESEND_MS;
+      const waiting = this.outbox.delete(key);
+      if (unchanged && !waiting) return;
+      this.outbox.set(key, { frame, dedupe });
+    } else {
+      this.outbox.set(Symbol(), { frame, dedupe: false });
+    }
+    void this.flush();
+  }
+
+  private async flush() {
+    if (this.sending) return;
+    this.sending = true;
+    try {
+      while (this.outbox.size > 0) {
+        const [key, { frame, dedupe }] = this.outbox.entries().next().value!;
+        this.outbox.delete(key);
+        if (typeof key === 'string' && dedupe) this.lastSent.set(key, { sig: signature(frame), at: Date.now() });
+        await this.link.send(frame).catch(() => {
+          /* a lost frame surfaces as a disconnect */
+        });
+      }
+    } finally {
+      this.sending = false;
+    }
+  }
+
+  /** Drop waiting frames and remembered state for keys starting with `prefix`. */
+  private forget(prefix: string) {
+    for (const k of [...this.outbox.keys()]) if (typeof k === 'string' && k.startsWith(prefix)) this.outbox.delete(k);
+    for (const k of [...this.lastSent.keys()]) if (k.startsWith(prefix)) this.lastSent.delete(k);
   }
 
   /** Send a frame that the board acknowledges with DONE. */
   private request(frame: Uint8Array): Promise<void> {
     const seq = frame[1];
+    // The board will move this motor on its own, so its last run / stop no longer holds.
+    this.lastSent.delete(`motor:M${frame[2]}`);
     return new Promise((resolve) => {
       this.done.set(seq, resolve);
-      void this.send(frame);
+      this.send(frame);
     });
   }
 
@@ -404,3 +457,6 @@ function abortable<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
     );
   });
 }
+
+/** A frame without its sequence number, to compare commands. */
+const signature = (frame: Uint8Array) => `${frame[0]}:${frame.subarray(2).join(',')}`;

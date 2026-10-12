@@ -61,6 +61,10 @@ The old MATRIXblock already used the Nordic UART Service (NUS).
 - Ultrasonic: one port measured every 60 ms, round robin. `pulseIn` blocks for up to ~27 ms when nothing echoes.
 - The web app drops telemetry frames shorter than their type's length.
 
+### Write pacing (web side)
+- BLE carries only a few dozen writes per second, but a program that sets motors from a sensor in a `forever` loop issues commands every few milliseconds. Writing each one queued them without bound, so the motors lagged further and further behind the program (seen on hardware with A / D sensors).
+- `BleR4Device` keeps one write in flight and holds the rest in an outbox. A newer motor / servo / LED / IO_MODE command replaces a waiting one for the same output, and an unchanged command is not repeated within 500 ms. HALT drops waiting motor commands. Degree moves, tones and HELLO are never merged or dropped.
+
 ### Safety
 - When the link drops, the board stops every motor and the buzzer.
 - Watchdog: the web app sends HEARTBEAT every 300 ms; the board halts after 2500 ms without any frame.

@@ -11,10 +11,21 @@ class FakeBoard implements BoardLink {
   protocol = PROTOCOL_VERSION;
   /** Answer MOTOR_RUN_DEG with DONE after this many ms (null = never). */
   doneAfter: number | null = 100;
+  /** Time each write takes on the radio (0 = instant); writes go one at a time, like GATT. */
+  writeMs = 0;
+  private radio: Promise<void> = Promise.resolve();
   private onMsg: (d: DataView) => void = () => {};
   private onGone: () => void = () => {};
 
-  async send(frame: Uint8Array) {
+  send(frame: Uint8Array) {
+    if (this.writeMs === 0) {
+      this.deliver(frame);
+      return Promise.resolve();
+    }
+    this.radio = this.radio.then(() => new Promise<void>((r) => setTimeout(r, this.writeMs))).then(() => this.deliver(frame));
+    return this.radio;
+  }
+  private deliver(frame: Uint8Array) {
     this.sent.push(frame);
     if (frame[0] === CMD.HELLO) this.reply([MSG.INFO, 0, this.protocol, 1, 0, 0]);
     if (frame[0] === CMD.MOTOR_RUN_DEG && this.doneAfter !== null) {
@@ -142,6 +153,8 @@ describe('BleR4Device', () => {
       for (let i = 0; i < 10; i++) {
         now += 100; // telemetry every 100 ms, no timer ticks
         b.motors([0, 0, 0, 0]);
+        await Promise.resolve(); // each notification is its own event
+
       }
       // 1 s of telemetry should have produced roughly one heartbeat per 300 ms.
       expect(b.of(CMD.HEARTBEAT).length).toBeGreaterThanOrEqual(3);
@@ -218,7 +231,7 @@ describe('BleR4Device', () => {
     expect(dev.readGesture('I2C1')).toBe('none');
   });
 
-  it('switches a D port to ultrasonic the first time a program measures it', () => {
+  it('switches a D port to ultrasonic the first time a program measures it', async () => {
     expect(dev.readUltrasonic('D2')).toBe(NO_DISTANCE_CM);
     expect(dev.readUltrasonic('D2')).toBe(NO_DISTANCE_CM);
     expect(board.of(CMD.IO_MODE).map((f) => f[2])).toEqual([0b0010]);
@@ -235,7 +248,71 @@ describe('BleR4Device', () => {
 
     // Reading the port as digital switches it back.
     dev.readDigital('D2');
+    await vi.advanceTimersByTimeAsync(0);
     expect(board.of(CMD.IO_MODE).map((f) => f[2])).toEqual([0b0010, 0]);
+  });
+
+  it('keeps motor commands current when a loop sends faster than the radio', async () => {
+    // A forever loop steering by a sensor sends motor commands every few ms;
+    // the radio carries one write per 20 ms. The board must follow the sensor
+    // without falling behind.
+    board.writeMs = 20;
+    const rt = new Runtime(dev, { drive: { left: 'M1', right: 'M2' } });
+    const pressed = { k: 'sensor', read: { type: 'digital', port: 'D1' } } as const;
+    void rt.run({
+      variables: [],
+      threads: [
+        {
+          id: 'h',
+          trigger: { k: 'start' },
+          body: [
+            {
+              id: 'f',
+              op: 'forever',
+              body: [
+                {
+                  id: 'i',
+                  op: 'if',
+                  cond: pressed,
+                  then: [{ id: 'a', op: 'motorRun', port: 'M1', speed: { k: 'num', v: 60 } }],
+                  else: [{ id: 'b', op: 'motorRun', port: 'M1', speed: { k: 'num', v: 0 } }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(3000);
+    board.io(0b0001, [0, 0, 0], [0xffff, 0xffff, 0xffff, 0xffff]);
+    await vi.advanceTimersByTimeAsync(100);
+    const last = board.of(CMD.MOTOR_RUN).at(-1)!;
+    expect([last[2], last[3]]).toEqual([1, 60]);
+    // Repeating an unchanged command does not flood the radio.
+    expect(board.of(CMD.MOTOR_RUN).length).toBeLessThan(20);
+    rt.stop();
+  });
+
+  it('resends an LED colour after the other LED target changed it', async () => {
+    dev.ledSet('1', 'red');
+    dev.ledSet('both', 'green');
+    dev.ledSet('1', 'red');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(board.of(CMD.LED).map((f) => [f[2], f[3]])).toEqual([
+      [1, 255],
+      [3, 0],
+      [1, 255],
+    ]);
+  });
+
+  it('drops waiting motor commands when the program stops', async () => {
+    board.writeMs = 20;
+    dev.motorRun('M1', 50);
+    dev.motorRun('M2', 50);
+    dev.halt();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(board.sent.slice(-2).map((f) => f[0])).toEqual([CMD.MOTOR_RUN, CMD.HALT]);
+    expect(board.of(CMD.MOTOR_RUN)).toHaveLength(1);
   });
 
   it('ignores stale encoder telemetry right after a reset', async () => {
