@@ -3,9 +3,10 @@
  * One frame per BLE write / notification, at most 20 bytes:
  * `[type:u8][seq:u8][payload…]`, little-endian.
  */
-import type { ButtonId, LedColor, LedTarget, MotorPort, SensorColor, ServoPort, StopMode } from '../../ir/types';
+import { GESTURES } from '../../ir/types';
+import type { ButtonId, DigitalPort, Gesture, LedColor, LedTarget, MotorPort, SensorColor, ServoPort, StopMode } from '../../ir/types';
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 export const MAX_FRAME = 20;
 
 export const NUS_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
@@ -25,12 +26,14 @@ export const CMD = {
   TONE: 0x22,
   NO_TONE: 0x23,
   HALT: 0x2f,
+  IO_MODE: 0x30,
 } as const;
 
 export const MSG = {
   T_MOTORS: 0x80,
   T_IMU: 0x81,
   T_PORTS: 0x82,
+  T_IO: 0x83,
   DONE: 0x90,
   INFO: 0x91,
 } as const;
@@ -38,9 +41,15 @@ export const MSG = {
 /** Sensor colour codes on the wire, in IR `SENSOR_COLORS` order. */
 export const COLOR_CODES: SensorColor[] = ['none', 'black', 'white', 'red', 'yellow', 'green', 'blue'];
 
+/** Gesture codes on the wire: the order of IR `GESTURES`. */
+export const GESTURE_CODES: readonly Gesture[] = GESTURES;
+
 /** What the board found on an I2C port. */
-export type PortKind = 'none' | 'color' | 'distance';
-const PORT_KINDS: PortKind[] = ['none', 'color', 'distance'];
+export type PortKind = 'none' | 'color' | 'distance' | 'gesture';
+const PORT_KINDS: PortKind[] = ['none', 'color', 'distance', 'gesture'];
+
+/** Ultrasonic reading when a D port measured nothing (or is not measuring). */
+const NO_ECHO = 0xffff;
 
 /** Pure RGB for the on-board LEDs (the swatch colours are tuned for screens). */
 export const LED_RGB: Record<LedColor, [number, number, number]> = {
@@ -55,7 +64,7 @@ export const LED_RGB: Record<LedColor, [number, number, number]> = {
   white: [255, 255, 255],
 };
 
-const portNum = (port: MotorPort | ServoPort) => Number(port.replace(/\D/g, ''));
+const portNum = (port: MotorPort | ServoPort | DigitalPort) => Number(port.replace(/\D/g, ''));
 const clampI8 = (v: number) => Math.max(-100, Math.min(100, Math.round(v)));
 
 function frame(type: number, seq: number, ...payload: number[]): Uint8Array {
@@ -90,25 +99,50 @@ export const encode = {
   tone: (seq: number, freq: number, ms: number) => frame(CMD.TONE, seq, ...u16(freq), ...u16(ms)),
   noTone: (seq: number) => frame(CMD.NO_TONE, seq),
   halt: (seq: number) => frame(CMD.HALT, seq),
+  /** Which D ports measure with an ultrasonic sensor; the others read as digital inputs. */
+  ioMode: (seq: number, ultrasonic: readonly DigitalPort[]) =>
+    frame(CMD.IO_MODE, seq, ultrasonic.reduce((mask, p) => mask | (1 << (portNum(p) - 1)), 0)),
 };
 
 export interface PortReading {
   kind: PortKind;
-  /** Colour sensor: the colour seen; distance sensor: centimetres. */
+  /** Colour sensor: the colour seen; distance sensor: centimetres; gesture sensor: the last gesture. */
   color?: SensorColor;
   cm?: number;
+  gesture?: Gesture;
+}
+
+export interface IoReading {
+  /** D1..D4 signal levels. */
+  digital: boolean[];
+  /** D1..D4 ultrasonic distance in cm, null when not measuring or no echo. */
+  ultrasonic: (number | null)[];
+  /** A1..A3, 0..1023. */
+  analog: number[];
 }
 
 export type BoardMessage =
   | { type: 'motors'; angles: [number, number, number, number]; busy: number; buttons: Record<ButtonId, boolean> }
   | { type: 'imu'; pitch: number; roll: number; yaw: number; battery: number }
   | { type: 'ports'; ports: [PortReading, PortReading, PortReading, PortReading] }
+  | ({ type: 'io' } & IoReading)
   | { type: 'done'; seq: number }
   | { type: 'info'; protocol: number; firmware: string }
   | { type: 'unknown'; code: number };
 
+/** Shortest valid frame of each telemetry type; shorter ones are dropped. */
+const MIN_LENGTH: Record<number, number> = {
+  [MSG.T_MOTORS]: 20,
+  [MSG.T_IMU]: 9,
+  [MSG.T_PORTS]: 14,
+  [MSG.T_IO]: 17,
+  [MSG.DONE]: 3,
+  [MSG.INFO]: 6,
+};
+
 export function decode(data: DataView): BoardMessage {
-  const type = data.getUint8(0);
+  const type = data.byteLength > 0 ? data.getUint8(0) : -1;
+  if (data.byteLength < (MIN_LENGTH[type] ?? 1)) return { type: 'unknown', code: type };
   switch (type) {
     case MSG.T_MOTORS: {
       const angles = [0, 1, 2, 3].map((i) => data.getInt32(2 + i * 4, true)) as [number, number, number, number];
@@ -134,9 +168,22 @@ export function decode(data: DataView): BoardMessage {
         const value = data.getUint16(3 + i * 3, true);
         if (kind === 'color') return { kind, color: COLOR_CODES[value] ?? 'none' };
         if (kind === 'distance') return { kind, cm: value / 10 };
+        if (kind === 'gesture') return { kind, gesture: GESTURE_CODES[value] ?? 'none' };
         return { kind };
       }) as [PortReading, PortReading, PortReading, PortReading];
       return { type: 'ports', ports };
+    }
+    case MSG.T_IO: {
+      const levels = data.getUint8(2);
+      return {
+        type: 'io',
+        digital: [0, 1, 2, 3].map((i) => (levels & (1 << i)) !== 0),
+        analog: [0, 1, 2].map((i) => data.getUint16(3 + i * 2, true)),
+        ultrasonic: [0, 1, 2, 3].map((i) => {
+          const mm = data.getUint16(9 + i * 2, true);
+          return mm === NO_ECHO ? null : mm / 10;
+        }),
+      };
     }
     case MSG.DONE:
       return { type: 'done', seq: data.getUint8(2) };

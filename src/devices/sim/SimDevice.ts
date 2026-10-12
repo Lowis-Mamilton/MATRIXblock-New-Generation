@@ -1,11 +1,12 @@
 import type { BoardSnapshot, ObservableDevice } from '../Device';
-import { MAX_DEG_PER_SEC } from '../Device';
+import { GESTURE_HOLD_MS, MAX_DEG_PER_SEC } from '../Device';
 import { sleep } from '../../runtime/sleep';
 import {
   MOTOR_PORTS,
   SERVO_PORTS,
   type AmountUnit,
   type ButtonId,
+  type Gesture,
   type LedColor,
   type LedTarget,
   type MotorPort,
@@ -16,17 +17,23 @@ import {
 } from '../../ir/types';
 
 /**
- * Simulated sensor values. The simulator has one colour and one distance
- * sensor that answer on every I2C port.
+ * Simulated sensor values. The simulator has one sensor of each kind, which
+ * answers on every port of its type (I2C, D or A).
  */
 export interface SimSensors {
   color: SensorColor;
   distance: number;
+  gesture: Gesture;
+  ultrasonic: number;
+  digital: boolean;
+  analog: number;
+  battery: number;
   tilt: Record<TiltAxis, number>;
   buttons: Record<ButtonId, boolean>;
 }
 
-export type SensorPatch = Partial<Pick<SimSensors, 'color' | 'distance'>> & {
+type Plain = 'color' | 'distance' | 'gesture' | 'ultrasonic' | 'digital' | 'analog' | 'battery';
+export type SensorPatch = Partial<Pick<SimSensors, Plain>> & {
   tilt?: Partial<SimSensors['tilt']>;
   buttons?: Partial<SimSensors['buttons']>;
 };
@@ -55,11 +62,17 @@ export class SimDevice implements ObservableDevice {
   private sensors: SimSensors = {
     color: 'none',
     distance: 100,
+    gesture: 'none',
+    ultrasonic: 100,
+    digital: false,
+    analog: 512,
+    battery: 100,
     tilt: { pitch: 0, roll: 0, yaw: 0 },
     buttons: { up: false, down: false },
   };
   private listeners = new Set<() => void>();
   private buttonListeners = new Set<(b: ButtonId) => void>();
+  private gestureTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ---- observation (simulator panel) ----
 
@@ -81,6 +94,7 @@ export class SimDevice implements ObservableDevice {
       leds: [...this.leds],
       note: this.note,
       sensors: { ...this.sensors, tilt: { ...this.sensors.tilt }, buttons: { ...this.sensors.buttons } },
+      battery: this.sensors.battery,
     };
   }
 
@@ -94,6 +108,14 @@ export class SimDevice implements ObservableDevice {
     };
     for (const b of ['up', 'down'] as const) {
       if (!before[b] && this.sensors.buttons[b]) for (const cb of this.buttonListeners) cb(b);
+    }
+    // Like the real sensor, a gesture is seen once and then fades.
+    if (patch.gesture && patch.gesture !== 'none') {
+      if (this.gestureTimer) clearTimeout(this.gestureTimer);
+      this.gestureTimer = setTimeout(() => {
+        this.gestureTimer = null;
+        this.setSensors({ gesture: 'none' });
+      }, GESTURE_HOLD_MS);
     }
     this.changed();
   }
@@ -180,6 +202,26 @@ export class SimDevice implements ObservableDevice {
 
   readDistance() {
     return this.sensors.distance;
+  }
+
+  readGesture() {
+    return this.sensors.gesture;
+  }
+
+  readUltrasonic() {
+    return this.sensors.ultrasonic;
+  }
+
+  readDigital() {
+    return this.sensors.digital;
+  }
+
+  readAnalog() {
+    return this.sensors.analog;
+  }
+
+  readBattery() {
+    return this.sensors.battery;
   }
 
   readTilt(axis: TiltAxis) {

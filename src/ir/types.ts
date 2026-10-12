@@ -12,6 +12,12 @@ export const LED_COLORS = ['off', 'red', 'orange', 'yellow', 'green', 'cyan', 'b
 export const SENSOR_COLORS = ['none', 'black', 'white', 'red', 'yellow', 'green', 'blue'] as const;
 export const TILT_AXES = ['pitch', 'roll', 'yaw'] as const;
 export const I2C_PORTS = ['I2C1', 'I2C2', 'I2C3', 'I2C4'] as const;
+/** Digital ports: switches, PIR and ultrasonic sensors. */
+export const DIGITAL_PORTS = ['D1', 'D2', 'D3', 'D4'] as const;
+/** Analog ports: grayscale, potentiometer, soil moisture, water level… */
+export const ANALOG_PORTS = ['A1', 'A2', 'A3'] as const;
+/** What the gesture sensor saw; `none` when nothing happened recently. */
+export const GESTURES = ['none', 'up', 'down', 'left', 'right', 'forward', 'backward', 'clockwise', 'anticlockwise', 'wave'] as const;
 export const BUTTONS = ['up', 'down'] as const;
 /** Which of the two on-board RGB LEDs. */
 export const LED_TARGETS = ['both', '1', '2'] as const;
@@ -22,6 +28,9 @@ export type LedColor = (typeof LED_COLORS)[number];
 export type SensorColor = (typeof SENSOR_COLORS)[number];
 export type TiltAxis = (typeof TILT_AXES)[number];
 export type I2cPort = (typeof I2C_PORTS)[number];
+export type DigitalPort = (typeof DIGITAL_PORTS)[number];
+export type AnalogPort = (typeof ANALOG_PORTS)[number];
+export type Gesture = (typeof GESTURES)[number];
 export type ButtonId = (typeof BUTTONS)[number];
 export type LedTarget = (typeof LED_TARGETS)[number];
 
@@ -37,6 +46,12 @@ export type BinOp =
 export type SensorRead =
   | { type: 'color'; port: I2cPort }
   | { type: 'distance'; port: I2cPort }
+  | { type: 'gesture'; port: I2cPort }
+  | { type: 'ultrasonic'; port: DigitalPort }
+  | { type: 'digital'; port: DigitalPort }
+  | { type: 'analog'; port: AnalogPort }
+  | { type: 'battery' }
+  | { type: 'timer' }
   | { type: 'tilt'; axis: TiltAxis }
   | { type: 'button'; button: ButtonId }
   | { type: 'motorAngle'; port: MotorPort };
@@ -78,6 +93,7 @@ export type Stmt =
   | S<{ op: 'setVar'; name: string; value: Expr }>
   | S<{ op: 'changeVar'; name: string; by: Expr }>
   | S<{ op: 'broadcast'; msg: string }>
+  | S<{ op: 'resetTimer' }>
   | S<{ op: 'stopAll' }>;
 
 export type StmtOp = Stmt['op'];

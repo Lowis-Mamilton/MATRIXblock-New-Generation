@@ -31,6 +31,8 @@ export class Runtime {
   private unsubscribeButton: (() => void) | null = null;
   private finish: (() => void) | null = null;
   private _running = false;
+  /** When the timer block last read 0 (program start or reset). */
+  private timerStart = 0;
 
   constructor(
     private readonly device: Device,
@@ -47,6 +49,7 @@ export class Runtime {
     this.abort = new AbortController();
     this.variables.clear();
     for (const name of program.variables) this.variables.set(name, 0);
+    this.timerStart = Date.now();
     this.setRunning(true);
 
     const done = new Promise<void>((resolve) => (this.finish = resolve));
@@ -185,6 +188,9 @@ export class Runtime {
       case 'broadcast':
         this.trigger((t) => t.k === 'message' && t.msg === s.msg);
         return;
+      case 'resetTimer':
+        this.timerStart = Date.now();
+        return;
       case 'stopAll':
         this.stop();
         throw new Stopped();
@@ -244,6 +250,18 @@ export class Runtime {
         return d.readColor(r.port);
       case 'distance':
         return d.readDistance(r.port);
+      case 'gesture':
+        return d.readGesture(r.port);
+      case 'ultrasonic':
+        return d.readUltrasonic(r.port);
+      case 'digital':
+        return d.readDigital(r.port);
+      case 'analog':
+        return d.readAnalog(r.port);
+      case 'battery':
+        return d.readBattery();
+      case 'timer':
+        return Math.round((Date.now() - this.timerStart) / 10) / 100;
       case 'tilt':
         return d.readTilt(r.axis);
       case 'button':

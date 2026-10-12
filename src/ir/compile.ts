@@ -8,8 +8,10 @@
 import type {
   Amount,
   AmountUnit,
+  AnalogPort,
   BinOp,
   ButtonId,
+  DigitalPort,
   Expr,
   I2cPort,
   LedColor,
@@ -119,6 +121,8 @@ const STATEMENTS: Record<string, StmtCompiler> = {
   w_if_else: (b, c) => ({ op: 'if', cond: c.expr(b, 'COND', false), then: c.stack(b, 'DO'), else: c.stack(b, 'ELSE') }),
   w_stop_all: () => ({ op: 'stopAll' }),
   w_broadcast: (b) => ({ op: 'broadcast', msg: str(b, 'MSG') }),
+  // ---- Word: sensors ----
+  w_timer_reset: () => ({ op: 'resetTimer' }),
   // ---- Word: variables (Blockly built-ins) ----
   variables_set: (b, c) => ({ op: 'setVar', name: c.ctx.varName(b.fields?.VAR), value: c.expr(b, 'VALUE') }),
   math_change: (b, c) => ({ op: 'changeVar', name: c.ctx.varName(b.fields?.VAR), by: c.expr(b, 'DELTA') }),
@@ -188,6 +192,17 @@ const EXPRESSIONS: Record<string, ExprCompiler> = {
     b: { k: 'str', v: str(b, 'COLOR') },
   }),
   w_distance: (b) => ({ k: 'sensor', read: { type: 'distance', port: field<I2cPort>(b, 'PORT') } }),
+  w_gesture_is: (b) => ({
+    k: 'bin',
+    op: '=',
+    a: { k: 'sensor', read: { type: 'gesture', port: field<I2cPort>(b, 'PORT') } },
+    b: { k: 'str', v: str(b, 'GESTURE') },
+  }),
+  w_ultrasonic: (b) => ({ k: 'sensor', read: { type: 'ultrasonic', port: field<DigitalPort>(b, 'PORT') } }),
+  w_digital: (b) => ({ k: 'sensor', read: { type: 'digital', port: field<DigitalPort>(b, 'PORT') } }),
+  w_analog: (b) => ({ k: 'sensor', read: { type: 'analog', port: field<AnalogPort>(b, 'PORT') } }),
+  w_battery: () => ({ k: 'sensor', read: { type: 'battery' } }),
+  w_timer: () => ({ k: 'sensor', read: { type: 'timer' } }),
   w_tilt: (b) => ({ k: 'sensor', read: { type: 'tilt', axis: field<TiltAxis>(b, 'AXIS') } }),
   w_button: (b) => ({ k: 'sensor', read: { type: 'button', button: button(b) } }),
   w_motor_angle: (b) => ({ k: 'sensor', read: { type: 'motorAngle', port: field<MotorPort>(b, 'PORT') } }),

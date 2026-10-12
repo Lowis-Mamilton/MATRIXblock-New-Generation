@@ -5,7 +5,7 @@
  */
 import * as Blockly from 'blockly/core';
 import 'blockly/blocks';
-import { I2C_PORTS, LED_COLORS, MOTOR_PORTS, SENSOR_COLORS, SERVO_PORTS } from '../../ir/types';
+import { ANALOG_PORTS, DIGITAL_PORTS, GESTURES, I2C_PORTS, LED_COLORS, MOTOR_PORTS, SENSOR_COLORS, SERVO_PORTS } from '../../ir/types';
 
 const msg = (key: string) => `%{BKY_${key}}`;
 const dropdown = (name: string, options: [string, string][]) => ({ type: 'field_dropdown', name, options });
@@ -19,6 +19,12 @@ const i2cPort = (initial: number) => {
   const ports = [...I2C_PORTS.slice(initial), ...I2C_PORTS.slice(0, initial)];
   return dropdown('PORT', ports.map((p) => [p, p]));
 };
+const digitalPort = dropdown('PORT', DIGITAL_PORTS.map((p) => [p, p]));
+const analogPort = dropdown('PORT', ANALOG_PORTS.map((p) => [p, p]));
+const gesture = dropdown(
+  'GESTURE',
+  GESTURES.filter((g) => g !== 'none').map((g) => [msg(`MB_G_${g.toUpperCase()}`), g]),
+);
 const button = dropdown('BTN', [
   [msg('MB_BTN_UP'), 'up'],
   [msg('MB_BTN_DOWN'), 'down'],
@@ -103,6 +109,10 @@ Blockly.common.defineBlocksWithJsonArray([
   reporter('w_color', 'sensors_blocks', msg('MB_COLOR'), 'String', [i2cPort(0)]),
   reporter('w_color_is', 'sensors_blocks', msg('MB_COLOR_IS'), 'Boolean', [i2cPort(0), sensorColour]),
   reporter('w_distance', 'sensors_blocks', msg('MB_DISTANCE'), 'Number', [i2cPort(1)]),
+  reporter('w_ultrasonic', 'sensors_blocks', msg('MB_ULTRASONIC'), 'Number', [digitalPort]),
+  reporter('w_analog', 'sensors_blocks', msg('MB_ANALOG'), 'Number', [analogPort]),
+  reporter('w_digital', 'sensors_blocks', msg('MB_DIGITAL'), 'Boolean', [digitalPort]),
+  reporter('w_gesture_is', 'sensors_blocks', msg('MB_GESTURE_IS'), 'Boolean', [i2cPort(2), gesture]),
   reporter('w_tilt', 'sensors_blocks', msg('MB_TILT'), 'Number', [
     dropdown('AXIS', [
       [msg('MB_AXIS_PITCH'), 'pitch'],
@@ -111,6 +121,9 @@ Blockly.common.defineBlocksWithJsonArray([
     ]),
   ]),
   reporter('w_button', 'sensors_blocks', msg('MB_BUTTON'), 'Boolean', [button]),
+  reporter('w_timer', 'sensors_blocks', msg('MB_TIMER'), 'Number'),
+  stmt('w_timer_reset', 'sensors_blocks', msg('MB_TIMER_RESET')),
+  reporter('w_battery', 'sensors_blocks', msg('MB_BATTERY'), 'Number'),
 
   // ---- light & sound ----
   stmt('w_led', 'looks_blocks', msg('MB_LED'), [ledTarget, ledColour]),
@@ -184,7 +197,20 @@ export const WORD_TOOLBOX: { category: string; contents: ToolboxBlock[] | 'VARIA
   },
   {
     category: 'sensors',
-    contents: [b('w_color_is'), b('w_color'), b('w_distance'), b('w_tilt'), b('w_button')],
+    contents: [
+      b('w_color_is'),
+      b('w_color'),
+      b('w_distance'),
+      b('w_ultrasonic'),
+      b('w_analog'),
+      b('w_digital'),
+      b('w_gesture_is'),
+      b('w_tilt'),
+      b('w_button'),
+      b('w_timer'),
+      b('w_timer_reset'),
+      b('w_battery'),
+    ],
   },
   {
     category: 'looks',

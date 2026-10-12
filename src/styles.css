@@ -302,6 +302,9 @@ button, input, select { font: inherit; color: inherit; }
 .swatch { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--mist); cursor: pointer; }
 .swatch.none { background-image: linear-gradient(135deg, transparent 45%, var(--halt) 45% 55%, transparent 55%) !important; background-color: var(--white) !important; }
 .swatch.selected { border-color: var(--navy-ink); box-shadow: 0 0 0 3px var(--sky); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { min-height: 32px; padding: 4px 12px; border-radius: 999px; border: 2px solid var(--mist); background: var(--white); font: inherit; font-weight: 600; color: var(--navy); cursor: pointer; }
+.chip[aria-pressed='true'] { border-color: var(--navy-ink); background: var(--sky); }
 
 /* The board: product render with live overlays positioned in % of the image. */
 .board { position: relative; width: 100%; user-select: none; container-type: inline-size; }
@@ -624,5 +627,6 @@ button, input, select { font: inherit; color: inherit; }
 @media (pointer: coarse) {
   .icon-button { width: 44px; height: 44px; }
   .swatch { width: 36px; height: 36px; }
+  .chip { min-height: 40px; }
   .sim-field input[type='range'] { height: 28px; }
 }

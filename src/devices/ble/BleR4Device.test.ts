@@ -50,6 +50,14 @@ class FakeBoard implements BoardLink {
     });
     this.onMsg(b);
   }
+  io(levels: number, analog: number[], ultrasonicMm: number[]) {
+    const b = new DataView(new ArrayBuffer(17));
+    b.setUint8(0, MSG.T_IO);
+    b.setUint8(2, levels);
+    analog.forEach((v, i) => b.setUint16(3 + i * 2, v, true));
+    ultrasonicMm.forEach((v, i) => b.setUint16(9 + i * 2, v, true));
+    this.onMsg(b);
+  }
   of(cmd: number) {
     return this.sent.filter((f) => f[0] === cmd);
   }
@@ -76,6 +84,26 @@ describe('protocol', () => {
     expect([...encode.led(1, 'both', 'red')]).toEqual([CMD.LED, 1, 3, 255, 0, 0]);
     expect([...encode.tone(2, 440, 500)]).toEqual([CMD.TONE, 2, 0xb8, 0x01, 0xf4, 0x01]);
     for (const f of [encode.motorRunDeg(1, 'M1', 100, 1e9), encode.tone(1, 9e9, 9e9)]) expect(f.length).toBeLessThanOrEqual(20);
+    expect([...encode.ioMode(3, ['D1', 'D4'])]).toEqual([CMD.IO_MODE, 3, 0b1001]);
+  });
+
+  it('decodes D / A port telemetry', () => {
+    const b = new DataView(new ArrayBuffer(17));
+    b.setUint8(0, MSG.T_IO);
+    b.setUint8(2, 0b0101);
+    [10, 512, 1023].forEach((v, i) => b.setUint16(3 + i * 2, v, true));
+    [0xffff, 234, 0xffff, 0xffff].forEach((v, i) => b.setUint16(9 + i * 2, v, true));
+    expect(decode(b)).toEqual({
+      type: 'io',
+      digital: [true, false, true, false],
+      analog: [10, 512, 1023],
+      ultrasonic: [null, 23.4, null, null],
+    });
+  });
+
+  it('drops frames too short for their type', () => {
+    expect(decode(new DataView(Uint8Array.from([MSG.T_MOTORS, 0, 1]).buffer))).toEqual({ type: 'unknown', code: MSG.T_MOTORS });
+    expect(decode(new DataView(new ArrayBuffer(0)))).toEqual({ type: 'unknown', code: -1 });
   });
 
   it('decodes IMU telemetry in hundredths of a degree', () => {
@@ -177,6 +205,37 @@ describe('BleR4Device', () => {
     expect(dev.readDistance('I2C2')).toBeCloseTo(23.4);
     expect(dev.readDistance('I2C3')).toBe(NO_DISTANCE_CM);
     expect(dev.snapshot().ports?.[0]).toEqual({ kind: 'color', color: 'red' });
+  });
+
+  it('reads gestures from the I2C ports', () => {
+    board.ports([
+      [0, 0],
+      [3, 9],
+      [0, 0],
+      [0, 0],
+    ]);
+    expect(dev.readGesture('I2C2')).toBe('wave');
+    expect(dev.readGesture('I2C1')).toBe('none');
+  });
+
+  it('switches a D port to ultrasonic the first time a program measures it', () => {
+    expect(dev.readUltrasonic('D2')).toBe(NO_DISTANCE_CM);
+    expect(dev.readUltrasonic('D2')).toBe(NO_DISTANCE_CM);
+    expect(board.of(CMD.IO_MODE).map((f) => f[2])).toEqual([0b0010]);
+
+    board.io(0b0001, [100, 200, 300], [0xffff, 456, 0xffff, 0xffff]);
+    expect(dev.readUltrasonic('D2')).toBeCloseTo(45.6);
+    expect(dev.readDigital('D1')).toBe(true);
+    expect(dev.readAnalog('A3')).toBe(300);
+    expect(dev.snapshot().io?.ultrasonic).toEqual([null, 45.6, null, null]);
+
+    // No echo on a measuring port reads as far away.
+    board.io(0, [0, 0, 0], [0xffff, 0xffff, 0xffff, 0xffff]);
+    expect(dev.readUltrasonic('D2')).toBe(NO_DISTANCE_CM);
+
+    // Reading the port as digital switches it back.
+    dev.readDigital('D2');
+    expect(board.of(CMD.IO_MODE).map((f) => f[2])).toEqual([0b0010, 0]);
   });
 
   it('ignores stale encoder telemetry right after a reset', async () => {

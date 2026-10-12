@@ -5,12 +5,17 @@
  * cached here so sensor reads never wait on the radio. Movements measured in
  * degrees/rotations run on the board and finish with a DONE frame; timed
  * movements are timed here.
+ *
+ * D ports read as digital inputs until a program asks one for an ultrasonic
+ * distance; from then on the board measures with an ultrasonic sensor there.
  */
 import type { BoardSnapshot, ObservableDevice } from '../Device';
-import { MOTOR_PORTS, SERVO_PORTS, I2C_PORTS } from '../../ir/types';
+import { ANALOG_PORTS, DIGITAL_PORTS, MOTOR_PORTS, SERVO_PORTS, I2C_PORTS } from '../../ir/types';
 import type {
   AmountUnit,
+  AnalogPort,
   ButtonId,
+  DigitalPort,
   I2cPort,
   LedColor,
   LedTarget,
@@ -37,6 +42,8 @@ const HELLO_TIMEOUT_MS = 3000;
 const RESET_SETTLE_MS = 200;
 /** Distance reported when no distance sensor is plugged in (never "near"). */
 export const NO_DISTANCE_CM = 999;
+/** Battery reported before the board's first IMU telemetry. */
+const UNKNOWN_BATTERY = 100;
 
 export class FirmwareMismatch extends Error {
   constructor(readonly firmware: string, readonly protocol: number) {
@@ -55,6 +62,7 @@ export class BleR4Device implements ObservableDevice {
   private buttonListeners = new Set<(b: ButtonId) => void>();
   private disconnectListeners = new Set<() => void>();
   private resetAt: Partial<Record<MotorPort, number>> = {};
+  private ultrasonicPorts: DigitalPort[] = [];
   private state: BoardSnapshot = {
     motors: Object.fromEntries(MOTOR_PORTS.map((p) => [p, { speed: 0, angle: 0 }])) as BoardSnapshot['motors'],
     servos: Object.fromEntries(SERVO_PORTS.map((p) => [p, 90])) as BoardSnapshot['servos'],
@@ -63,10 +71,19 @@ export class BleR4Device implements ObservableDevice {
     sensors: {
       color: 'none',
       distance: NO_DISTANCE_CM,
+      gesture: 'none',
+      ultrasonic: NO_DISTANCE_CM,
+      digital: false,
+      analog: 0,
       tilt: { pitch: 0, roll: 0, yaw: 0 },
       buttons: { up: false, down: false },
     },
     ports: I2C_PORTS.map(() => ({ kind: 'none' as const })),
+    io: {
+      digital: DIGITAL_PORTS.map(() => false),
+      ultrasonic: DIGITAL_PORTS.map(() => null),
+      analog: ANALOG_PORTS.map(() => 0),
+    },
     battery: undefined,
   };
 
@@ -226,6 +243,29 @@ export class BleR4Device implements ObservableDevice {
     return r.kind === 'distance' ? (r.cm ?? NO_DISTANCE_CM) : NO_DISTANCE_CM;
   }
 
+  readGesture(port: I2cPort) {
+    const r = this.port(port);
+    return r.kind === 'gesture' ? (r.gesture ?? 'none') : 'none';
+  }
+
+  readUltrasonic(port: DigitalPort) {
+    this.useUltrasonic(port, true);
+    return this.state.io!.ultrasonic[DIGITAL_PORTS.indexOf(port)] ?? NO_DISTANCE_CM;
+  }
+
+  readDigital(port: DigitalPort) {
+    this.useUltrasonic(port, false);
+    return this.state.io!.digital[DIGITAL_PORTS.indexOf(port)];
+  }
+
+  readAnalog(port: AnalogPort) {
+    return this.state.io!.analog[ANALOG_PORTS.indexOf(port)];
+  }
+
+  readBattery() {
+    return this.state.battery ?? UNKNOWN_BATTERY;
+  }
+
   readTilt(axis: TiltAxis) {
     return this.state.sensors.tilt[axis];
   }
@@ -252,6 +292,13 @@ export class BleR4Device implements ObservableDevice {
 
   private port(port: I2cPort): PortReading {
     return (this.state.ports?.[I2C_PORTS.indexOf(port)] ?? { kind: 'none' }) as PortReading;
+  }
+
+  /** Switch a D port between ultrasonic and digital input; the last read decides. */
+  private useUltrasonic(port: DigitalPort, on: boolean) {
+    if (this.ultrasonicPorts.includes(port) === on) return;
+    this.ultrasonicPorts = on ? [...this.ultrasonicPorts, port] : this.ultrasonicPorts.filter((p) => p !== port);
+    void this.send(encode.ioMode(this.nextSeq(), this.ultrasonicPorts));
   }
 
   private nextSeq() {
@@ -302,8 +349,22 @@ export class BleR4Device implements ObservableDevice {
         this.state.ports = m.ports;
         const color = m.ports.find((r) => r.kind === 'color');
         const distance = m.ports.find((r) => r.kind === 'distance');
+        const gesture = m.ports.find((r) => r.kind === 'gesture');
         this.state.sensors.color = color?.color ?? 'none';
         this.state.sensors.distance = distance?.cm ?? NO_DISTANCE_CM;
+        this.state.sensors.gesture = gesture?.gesture ?? 'none';
+        break;
+      }
+      case 'io': {
+        const { digital, analog } = m;
+        // null = this port is not measuring; no echo while measuring reads as far away.
+        const ultrasonic = DIGITAL_PORTS.map((p, i) =>
+          this.ultrasonicPorts.includes(p) ? (m.ultrasonic[i] ?? NO_DISTANCE_CM) : null,
+        );
+        this.state.io = { digital, ultrasonic, analog };
+        this.state.sensors.digital = digital[0];
+        this.state.sensors.analog = analog[0];
+        this.state.sensors.ultrasonic = ultrasonic.find((cm) => cm !== null) ?? NO_DISTANCE_CM;
         break;
       }
       case 'done':

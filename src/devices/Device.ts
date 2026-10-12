@@ -1,6 +1,9 @@
 import type {
   AmountUnit,
+  AnalogPort,
   ButtonId,
+  DigitalPort,
+  Gesture,
   I2cPort,
   LedColor,
   LedTarget,
@@ -37,8 +40,18 @@ export interface Device {
   beep(note: number, secs: number, signal: AbortSignal): Promise<void>;
 
   readColor(port: I2cPort): SensorColor;
-  /** Distance in centimetres. */
+  /** Laser distance in centimetres. */
   readDistance(port: I2cPort): number;
+  /** The last gesture, for `GESTURE_HOLD_MS` after it happened; then `none`. */
+  readGesture(port: I2cPort): Gesture;
+  /** Ultrasonic distance in centimetres. */
+  readUltrasonic(port: DigitalPort): number;
+  /** Level of a digital port's signal pin (switch pressed, PIR triggered…). */
+  readDigital(port: DigitalPort): boolean;
+  /** Analog port reading, 0..1023. */
+  readAnalog(port: AnalogPort): number;
+  /** Battery charge in percent. */
+  readBattery(): number;
   /** Tilt in degrees. */
   readTilt(axis: TiltAxis): number;
   readButton(button: ButtonId): boolean;
@@ -60,11 +73,18 @@ export interface BoardSnapshot {
   sensors: {
     color: SensorColor;
     distance: number;
+    gesture: Gesture;
+    ultrasonic: number;
+    digital: boolean;
+    analog: number;
     tilt: Record<TiltAxis, number>;
     buttons: Record<ButtonId, boolean>;
   };
-  /** Real boards only: what each I2C port reports, and battery percent. */
-  ports?: { kind: 'none' | 'color' | 'distance'; color?: SensorColor; cm?: number }[];
+  /** Real boards only: what each I2C port reports. */
+  ports?: { kind: 'none' | 'color' | 'distance' | 'gesture'; color?: SensorColor; cm?: number; gesture?: Gesture }[];
+  /** Real boards only: D1..D4 levels, ultrasonic cm (null when not measuring), A1..A3 readings. */
+  io?: { digital: boolean[]; ultrasonic: (number | null)[]; analog: number[] };
+  /** Battery percent; unknown until a real board reports it. */
   battery?: number;
 }
 
@@ -73,6 +93,9 @@ export interface ObservableDevice extends Device {
   subscribe(cb: () => void): () => void;
   snapshot(): BoardSnapshot;
 }
+
+/** How long a gesture keeps reading as seen (the sensor only reports it once). */
+export const GESTURE_HOLD_MS = 1000;
 
 /** Degrees per second a motor turns at 100% speed (measured on the R4 TT motor). */
 export const MAX_DEG_PER_SEC = 760;

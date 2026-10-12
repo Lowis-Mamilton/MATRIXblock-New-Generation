@@ -17,7 +17,7 @@ RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
 TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
 WATCHDOG_S = 2.5
 
-state = {"motors": None, "imu": None, "ports": None, "done": set(), "info": None, "frames": 0}
+state = {"motors": None, "imu": None, "ports": None, "io": None, "done": set(), "info": None, "frames": 0}
 _seq = 0
 
 
@@ -37,6 +37,8 @@ def on_notify(_, data: bytearray):
         state["imu"] = (p / 100, r / 100, y / 100, data[8])
     elif t == 0x82:
         state["ports"] = [(data[2 + i * 3], struct.unpack_from("<H", data, 3 + i * 3)[0]) for i in range(4)]
+    elif t == 0x83:
+        state["io"] = (data[2], struct.unpack_from("<3H", data, 3), struct.unpack_from("<4H", data, 9))
     elif t == 0x90:
         state["done"].add(data[2])
     elif t == 0x91:
@@ -86,6 +88,7 @@ async def main(args):
         print("motors (angles, busy, buttons):", state["motors"])
         print("imu (pitch, roll, yaw, battery%):", state["imu"])
         print("ports (kind, value):", state["ports"])
+        print("io (D levels, A1-A3, ultrasonic mm):", state["io"])
         ok &= state["info"] is not None and state["frames"] > 20
         if args.telemetry_only:
             hb.cancel()

@@ -41,7 +41,12 @@ Everything Icon blocks can do, plus:
 - **Movement**: steering move and tank move, for seconds / rotations / degrees, or start-and-continue; stop (brake / coast)
 - **Motors**: run for an amount, start, stop, reset angle, read angle; servo
 - **Control**: if / if-else, wait until ⟨condition⟩, repeat until, stop all
-- **Sensors**: colour, "sees colour?", distance (each with an I2C port), tilt (pitch / roll / yaw), button (up / down)
+- **Sensors** (10 kinds):
+  - I2C1–I2C4: colour sensor (colour, "sees colour?"), laser distance, gesture sensor ("sees gesture?": up / down / left / right / towards / away / clockwise / anticlockwise / wave; a gesture reads as seen for 1 s)
+  - D1–D4: ultrasonic distance (cm), digital sensor "triggered?" (micro switch, PIR…)
+  - A1–A3: analog sensor value 0–1023 (grayscale, potentiometer, soil moisture, water level…)
+  - On board: tilt (pitch / roll / yaw), button (up / down), battery level (%)
+  - Timer: seconds since start or the last "reset timer"
 - **Operators**: arithmetic, comparison, and / or / not, random
 - **Variables**: create, set, change
 - **Events**: start, button, broadcast / when I receive (multiple threads)
@@ -49,7 +54,7 @@ Everything Icon blocks can do, plus:
 Out of scope: lists, My Blocks, OLED, joystick, HuskyLens, M-Vision, 2D driving-field simulation (deferred).
 
 ### Hardware covered
-Outputs: DC motors M1–M4, servos RC1–RC4, two RGB LEDs, buzzer. Inputs: up / down buttons, IMU, colour sensor (MXColor / V3) and laser distance sensor (MXLaser / V2) on I2C1–I2C4. The firmware detects which sensor model is plugged into each port.
+Outputs: DC motors M1–M4, servos RC1–RC4, two RGB LEDs, buzzer. Inputs: up / down buttons, IMU, battery, colour sensor (MXColor / V3), laser distance sensor (MXLaser / V2) and gesture sensor (MXGesture) on I2C1–I2C4; ultrasonic sensors (HC-SR04 type) or digital sensors on D1–D4; analog sensors on A1–A3. The firmware detects which I2C sensor is plugged into each port; D ports are digital inputs until a program reads an ultrasonic distance there.
 
 ## Architecture
 

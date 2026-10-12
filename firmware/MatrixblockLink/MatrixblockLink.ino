@@ -14,8 +14,8 @@
 #include <Wire.h>
 
 // ---- protocol -------------------------------------------------------------
-const uint8_t PROTOCOL_VERSION = 1;
-const uint8_t FW_MAJOR = 1, FW_MINOR = 0, FW_PATCH = 0;
+const uint8_t PROTOCOL_VERSION = 2;
+const uint8_t FW_MAJOR = 1, FW_MINOR = 1, FW_PATCH = 0;
 
 enum Cmd : uint8_t {
   CMD_HELLO = 0x01,
@@ -29,12 +29,14 @@ enum Cmd : uint8_t {
   CMD_TONE = 0x22,
   CMD_NO_TONE = 0x23,
   CMD_HALT = 0x2F,
+  CMD_IO_MODE = 0x30,
 };
 
 enum Msg : uint8_t {
   MSG_T_MOTORS = 0x80,
   MSG_T_IMU = 0x81,
   MSG_T_PORTS = 0x82,
+  MSG_T_IO = 0x83,
   MSG_DONE = 0x90,
   MSG_INFO = 0x91,
 };
@@ -45,6 +47,11 @@ const unsigned long WATCHDOG_MS = 2500;
 const unsigned long MOTORS_EVERY_MS = 50;
 const unsigned long IMU_EVERY_MS = 100;
 const unsigned long PORTS_EVERY_MS = 200;
+const unsigned long IO_EVERY_MS = 100;
+/** One ultrasonic measurement per pass, round robin; HC-SR04 echoes need ~60 ms to die out. */
+const unsigned long ULTRASONIC_EVERY_MS = 60;
+/** A gesture is reported once by the sensor; keep reporting it this long. */
+const unsigned long GESTURE_HOLD_MS = 1000;
 const unsigned long SCAN_EVERY_MS = 2000;
 /** Measured on a TT motor: about 7.6 degrees per second per 1% speed. */
 const float DEG_PER_SEC_PER_PERCENT = 7.6;
@@ -69,12 +76,13 @@ struct PendingRotate {
 PendingRotate pending[4];
 
 // ---- I2C sensor ports -----------------------------------------------------
-enum PortKind : uint8_t { PORT_NONE = 0, PORT_COLOR = 1, PORT_DISTANCE = 2 };
-enum Variant : uint8_t { V_NONE, V_COLOR1, V_COLOR3, V_LASER1, V_LASER2 };
+enum PortKind : uint8_t { PORT_NONE = 0, PORT_COLOR = 1, PORT_DISTANCE = 2, PORT_GESTURE = 3 };
+enum Variant : uint8_t { V_NONE, V_COLOR1, V_COLOR3, V_LASER1, V_LASER2, V_GESTURE };
 
 struct Port {
   Variant variant;
-  uint16_t value;   // colour code or distance in mm
+  uint16_t value;   // colour code, distance in mm or gesture code
+  unsigned long gestureMs;   // when the reported gesture happened
 };
 Port ports[4];
 
@@ -82,7 +90,14 @@ const uint8_t MUX_ADDR = 0x70;
 const uint8_t COLOR1_ADDR = 0x22;
 const uint8_t LASER1_ADDR = 0x26;
 const uint8_t SHARED_ADDR = 0x29;   // MXColorV3 (TCS34725) and MXLaserV2 (VL53L0X)
+const uint8_t GESTURE_ADDR = 0x73;  // MXGesture (PAJ7620)
 
+// ---- D and A ports ----------------------------------------------------------
+/** D ports measuring with an ultrasonic sensor (bit 0 = D1); the others are digital inputs. */
+uint8_t ultrasonicMask = 0;
+const uint16_t NO_ECHO = 0xFFFF;
+uint16_t ultrasonicMm[4] = {NO_ECHO, NO_ECHO, NO_ECHO, NO_ECHO};
+uint8_t ultrasonicCursor = 0;
 // ---- small helpers --------------------------------------------------------
 void put16(uint8_t* b, int16_t v) { b[0] = v & 0xFF; b[1] = (v >> 8) & 0xFF; }
 void putU16(uint8_t* b, uint16_t v) { b[0] = v & 0xFF; b[1] = v >> 8; }
@@ -191,6 +206,14 @@ void handleFrame(const uint8_t* f, int len) {
     case CMD_HALT:
       haltAll();
       break;
+    case CMD_IO_MODE:
+      if (n >= 1) {
+        ultrasonicMask = p[0] & 0x0F;
+        for (uint8_t i = 0; i < 4; i++) {
+          if (!(ultrasonicMask & (1 << i))) ultrasonicMm[i] = NO_ECHO;
+        }
+      }
+      break;
   }
 }
 
@@ -223,6 +246,8 @@ void onDisconnect(BLEDevice) {
   Serial.println(F("[MatrixblockLink] disconnected"));
   connected = false;
   haltAll();
+  ultrasonicMask = 0;
+  for (uint8_t i = 0; i < 4; i++) ultrasonicMm[i] = NO_ECHO;
   MiniR4.LED.setColor(1, 0, 0, 0);
   MiniR4.LED.setColor(2, 0, 0, 0);
   showStatus("Waiting for app...");
@@ -263,6 +288,9 @@ MatrixLaser* laser1(uint8_t i) {
 MatrixLaserV2* laser2(uint8_t i) {
   switch (i) { case 0: return &MiniR4.I2C1.MXLaserV2; case 1: return &MiniR4.I2C2.MXLaserV2; case 2: return &MiniR4.I2C3.MXLaserV2; default: return &MiniR4.I2C4.MXLaserV2; }
 }
+MatrixGesture* gesture(uint8_t i) {
+  switch (i) { case 0: return &MiniR4.I2C1.MXGesture; case 1: return &MiniR4.I2C2.MXGesture; case 2: return &MiniR4.I2C3.MXGesture; default: return &MiniR4.I2C4.MXGesture; }
+}
 
 /** Which sensor answers on this port (cheap address probe, no init). */
 Variant probe(uint8_t i) {
@@ -273,6 +301,7 @@ Variant probe(uint8_t i) {
     // VL53L0X identifies itself with 0xEE at register 0xC0.
     return readReg8(SHARED_ADDR, 0xC0) == 0xEE ? V_LASER2 : V_COLOR3;
   }
+  if (present(GESTURE_ADDR)) return V_GESTURE;
   return V_NONE;
 }
 
@@ -282,6 +311,7 @@ bool initSensor(uint8_t i, Variant v) {
     case V_COLOR3: return color3(i)->begin();
     case V_LASER1: return laser1(i)->begin();
     case V_LASER2: return laser2(i)->begin();
+    case V_GESTURE: return gesture(i)->begin() == ERR_OK;
     default: return false;
   }
 }
@@ -294,6 +324,24 @@ void scanPorts() {
     ports[i].variant = (v != V_NONE && initSensor(i, v)) ? v : V_NONE;
     ports[i].value = 0;
   }
+}
+
+/**
+ * The gesture since the last read, as a wire code (0 none, 1 up, 2 down, 3 left,
+ * 4 right, 5 forward, 6 backward, 7 clockwise, 8 anticlockwise, 9 wave).
+ * Reads the PAJ7620 flag registers directly: the library's getGesture() waits
+ * up to 2 s to tell gestures apart, which would stall BLE.
+ */
+uint8_t readGesture(uint8_t i) {
+  muxSelect(i);
+  if (readReg8(GESTURE_ADDR, 0x44) & 0x01) return 9;   // FLAG_1 bit 0: wave
+  const uint8_t flags = readReg8(GESTURE_ADDR, 0x43);   // FLAG_0, cleared by reading
+  // Bit order: right, left, up, down, forward, backward, clockwise, anticlockwise.
+  static const uint8_t CODES[8] = {4, 3, 1, 2, 5, 6, 7, 8};
+  for (uint8_t b = 0; b < 8; b++) {
+    if (flags & (1 << b)) return CODES[b];
+  }
+  return 0;
 }
 
 /** Library colour IDs -> wire codes (0 none, 1 black, 2 white, 3 red, 4 yellow, 5 green, 6 blue). */
@@ -318,6 +366,16 @@ void readPorts() {
       case V_COLOR3: ports[i].value = colorCode(color3(i)->getColorID()); break;
       case V_LASER1: ports[i].value = laser1(i)->getDistance(); break;
       case V_LASER2: ports[i].value = laser2(i)->getDistance(); break;
+      case V_GESTURE: {
+        const uint8_t g = readGesture(i);
+        if (g) {
+          ports[i].value = g;
+          ports[i].gestureMs = millis();
+        } else if (millis() - ports[i].gestureMs > GESTURE_HOLD_MS) {
+          ports[i].value = 0;
+        }
+        break;
+      }
       default: ports[i].value = 0;
     }
   }
@@ -329,6 +387,7 @@ PortKind kindOf(Variant v) {
     case V_COLOR3: return PORT_COLOR;
     case V_LASER1:
     case V_LASER2: return PORT_DISTANCE;
+    case V_GESTURE: return PORT_GESTURE;
     default: return PORT_NONE;
   }
 }
@@ -419,6 +478,43 @@ void sendPorts() {
   send(f, 14);
 }
 
+bool readDigital(uint8_t i) {
+  switch (i) { case 0: return MiniR4.D1.getL(); case 1: return MiniR4.D2.getL(); case 2: return MiniR4.D3.getL(); default: return MiniR4.D4.getL(); }
+}
+
+/** Distance in cm, or -1 without an echo. Blocks for up to ~27 ms. */
+float readUltrasonic(uint8_t i) {
+  switch (i) { case 0: return MiniR4.D1.US.getDistance(); case 1: return MiniR4.D2.US.getDistance(); case 2: return MiniR4.D3.US.getDistance(); default: return MiniR4.D4.US.getDistance(); }
+}
+
+int readAnalog(uint8_t i) {
+  switch (i) { case 0: return MiniR4.A1.getAIL(); case 1: return MiniR4.A2.getAIL(); default: return MiniR4.A3.getAIL(); }
+}
+
+/** Measure the next D port that has an ultrasonic sensor. */
+void measureNextUltrasonic() {
+  for (uint8_t k = 0; k < 4; k++) {
+    const uint8_t i = (ultrasonicCursor + k) % 4;
+    if (!(ultrasonicMask & (1 << i))) continue;
+    ultrasonicCursor = (i + 1) % 4;
+    const float cm = readUltrasonic(i);
+    ultrasonicMm[i] = cm < 0 ? NO_ECHO : (uint16_t)min(cm * 10, 65534.0f);
+    return;
+  }
+}
+
+void sendIo() {
+  uint8_t f[17] = {MSG_T_IO, 0};
+  uint8_t levels = 0;
+  for (uint8_t i = 0; i < 4; i++) {
+    if (!(ultrasonicMask & (1 << i)) && readDigital(i)) levels |= 1 << i;
+    putU16(f + 9 + i * 2, ultrasonicMm[i]);
+  }
+  f[2] = levels;
+  for (uint8_t i = 0; i < 3; i++) putU16(f + 3 + i * 2, readAnalog(i));
+  send(f, 17);
+}
+
 // ---- main -----------------------------------------------------------------
 void setup() {
   // Diagnostics on the USB serial port (115200 baud); harmless when nobody listens.
@@ -458,12 +554,13 @@ void setup() {
     Serial.print(F("  I2C"));
     Serial.print(i + 1);
     Serial.print(F(": "));
-    Serial.println(kindOf(ports[i].variant) == PORT_COLOR ? F("colour") : kindOf(ports[i].variant) == PORT_DISTANCE ? F("distance") : F("-"));
+    const PortKind k = kindOf(ports[i].variant);
+    Serial.println(k == PORT_COLOR ? F("colour") : k == PORT_DISTANCE ? F("distance") : k == PORT_GESTURE ? F("gesture") : F("-"));
   }
 }
 
 void loop() {
-  static unsigned long lastMotors = 0, lastImu = 0, lastPorts = 0, lastScan = 0, lastBattery = 0;
+  static unsigned long lastMotors = 0, lastImu = 0, lastPorts = 0, lastIo = 0, lastUltrasonic = 0, lastScan = 0, lastBattery = 0;
   BLE.poll();
   const unsigned long now = millis();
 
@@ -498,5 +595,13 @@ void loop() {
   if (now - lastPorts >= PORTS_EVERY_MS) {
     lastPorts = now;
     sendPorts();
+  }
+  if (ultrasonicMask && now - lastUltrasonic >= ULTRASONIC_EVERY_MS) {
+    lastUltrasonic = now;
+    measureNextUltrasonic();
+  }
+  if (now - lastIo >= IO_EVERY_MS) {
+    lastIo = now;
+    sendIo();
   }
 }

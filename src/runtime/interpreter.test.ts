@@ -183,6 +183,42 @@ describe('Runtime', () => {
     expect(Math.round(device.motorAngle('M4'))).toBe(360);
   });
 
+  it('reads the new sensors from the device', async () => {
+    device.setSensors({ ultrasonic: 42, analog: 700, digital: true, battery: 63 });
+    expect(rt.eval({ k: 'sensor', read: { type: 'ultrasonic', port: 'D1' } })).toBe(42);
+    expect(rt.eval({ k: 'sensor', read: { type: 'analog', port: 'A2' } })).toBe(700);
+    expect(rt.eval({ k: 'sensor', read: { type: 'digital', port: 'D4' } })).toBe(true);
+    expect(rt.eval({ k: 'sensor', read: { type: 'battery' } })).toBe(63);
+  });
+
+  it('holds a gesture for a second, then reads none', async () => {
+    const gesture: Expr = { k: 'sensor', read: { type: 'gesture', port: 'I2C1' } };
+    device.setSensors({ gesture: 'left' });
+    await vi.advanceTimersByTimeAsync(900);
+    expect(rt.eval(gesture)).toBe('left');
+    await vi.advanceTimersByTimeAsync(200);
+    expect(rt.eval(gesture)).toBe('none');
+  });
+
+  it('counts seconds since the start or the last timer reset', async () => {
+    const timer: Expr = { k: 'sensor', read: { type: 'timer' } };
+    void rt.run(
+      program(
+        thread([
+          st({ op: 'wait', secs: num(1.5) }),
+          st({ op: 'setVar', name: 'x', value: timer }),
+          st({ op: 'resetTimer' }),
+          st({ op: 'wait', secs: num(10) }),
+        ]),
+      ),
+    );
+    await vi.advanceTimersByTimeAsync(1600);
+    expect(rt.variables.get('x')).toBe(1.5);
+    // Reset at 1.5 s; now 1.85 s.
+    await vi.advanceTimersByTimeAsync(250);
+    expect(rt.eval(timer)).toBe(0.35);
+  });
+
   it('stopAll ends every thread', async () => {
     const done = rt.run(
       program(

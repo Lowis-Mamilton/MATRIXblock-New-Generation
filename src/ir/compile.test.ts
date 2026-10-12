@@ -96,6 +96,30 @@ describe('compile (Word)', () => {
     expect(prog.threads[0].body).toEqual([{ id: 'w', op: 'waitUntil', cond: { k: 'bool', v: false } }]);
   });
 
+  it('compiles every Word sensor block', () => {
+    const read = (block: SBlock) => {
+      const prog = compile({
+        blocks: { blocks: [chain({ type: 'w_when_start', id: 'h' }, { type: 'w_wait_until', id: 'w', inputs: { COND: { block } } })] },
+      });
+      const stmt = prog.threads[0].body[0];
+      if (stmt.op !== 'waitUntil') throw new Error();
+      return stmt.cond;
+    };
+    expect(read({ type: 'w_ultrasonic', id: 'u', fields: { PORT: 'D3' } })).toEqual({ k: 'sensor', read: { type: 'ultrasonic', port: 'D3' } });
+    expect(read({ type: 'w_digital', id: 'd', fields: { PORT: 'D2' } })).toEqual({ k: 'sensor', read: { type: 'digital', port: 'D2' } });
+    expect(read({ type: 'w_analog', id: 'a', fields: { PORT: 'A1' } })).toEqual({ k: 'sensor', read: { type: 'analog', port: 'A1' } });
+    expect(read({ type: 'w_battery', id: 'b' })).toEqual({ k: 'sensor', read: { type: 'battery' } });
+    expect(read({ type: 'w_timer', id: 't' })).toEqual({ k: 'sensor', read: { type: 'timer' } });
+    expect(read({ type: 'w_gesture_is', id: 'g', fields: { PORT: 'I2C3', GESTURE: 'wave' } })).toEqual({
+      k: 'bin',
+      op: '=',
+      a: { k: 'sensor', read: { type: 'gesture', port: 'I2C3' } },
+      b: { k: 'str', v: 'wave' },
+    });
+    const prog = compile({ blocks: { blocks: [chain({ type: 'w_when_start', id: 'h' }, { type: 'w_timer_reset', id: 'r' })] } });
+    expect(prog.threads[0].body).toEqual([{ id: 'r', op: 'resetTimer' }]);
+  });
+
   it('reports unknown blocks with their id', () => {
     expect(() =>
       compile({ blocks: { blocks: [chain({ type: 'w_when_start', id: 'h' }, { type: 'nope', id: 'x' })] } }),
